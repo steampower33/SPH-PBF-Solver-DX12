@@ -1,0 +1,83 @@
+#include "GameTimer.h"
+
+#include "FluidSimApp.h"
+
+bool FluidSimApp::Run()
+{
+	GameTimer timer;
+	timer.Reset();
+
+	bool bIsExit = false;
+
+	while (bIsExit == false)
+	{
+		timer.Tick();
+
+		MSG msg;
+		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+			if (msg.message == WM_QUIT) bIsExit = true;
+		}
+		if (bIsExit) break;
+
+		float dt = timer.GetDeltaTime();
+		float totalTime = timer.GetTotalTime();
+
+		// --- Update ---
+
+		if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+		{
+			PostQuitMessage(0);
+			break;
+		}
+
+		// --- Rendering ---
+	}
+
+	return true;
+}
+
+LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	//if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+	//	return true;
+
+	switch (message)
+	{
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
+	return 0;
+}
+
+void FluidSimApp::Initialize(HINSTANCE hInstance)
+{
+
+	WCHAR WindowClass[] = L"SPH-PBF-Solver-DX12";
+	WCHAR Title[] = L"SPH-PBF-Solver-DX12";
+
+	WNDCLASSW wndclass = { 0, WndProc, 0, 0, 0, 0, 0, 0, 0, WindowClass };
+	RegisterClassW(&wndclass);
+
+	DWORD dwStyle = WS_OVERLAPPEDWINDOW;
+	RECT wr = { 0, 0, (LONG)m_Width, (LONG)m_Height };
+	AdjustWindowRect(&wr, dwStyle, FALSE);
+
+	HWND hWnd = CreateWindowExW(0, WindowClass, Title,
+		dwStyle | WS_VISIBLE,
+		CW_USEDEFAULT, CW_USEDEFAULT,
+		wr.right - wr.left,   // This will be larger than 1280 (e.g., 1296)
+		wr.bottom - wr.top,   // This will be larger than 720 (e.g., 759)
+		nullptr, nullptr, hInstance, nullptr);
+
+	RECT cr;
+	GetClientRect(hWnd, &cr);
+	m_Width = (float)(cr.right - cr.left);   // Should be EXACTLY 1280.0f
+	m_Height = (float)(cr.bottom - cr.top);  // Should be EXACTLY 720.0f
+
+}
