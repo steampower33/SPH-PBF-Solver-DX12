@@ -34,6 +34,11 @@ bool FluidSimApp::Run()
 		}
 
 		// --- Rendering ---
+		m_GraphicsCore.BeginFrame();
+
+
+
+		m_GraphicsCore.EndFrame();
 	}
 
 	return true;
@@ -57,7 +62,6 @@ LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
 
 void FluidSimApp::Initialize(HINSTANCE hInstance)
 {
-
 	WCHAR WindowClass[] = L"SPH-PBF-Solver-DX12";
 	WCHAR Title[] = L"SPH-PBF-Solver-DX12";
 
@@ -80,4 +84,6 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	m_Width = (float)(cr.right - cr.left);   // Should be EXACTLY 1280.0f
 	m_Height = (float)(cr.bottom - cr.top);  // Should be EXACTLY 720.0f
 
+	m_GraphicsCore.Initialize(hWnd, m_Width, m_Height);
+	m_Renderer.Initialize(m_GraphicsCore.GetDevice());
 }

@@ -19,6 +19,9 @@
     <Filter Include="Source\Tools">
       <UniqueIdentifier>{bb03da40-0aaf-4d03-ae2d-cbbd56f419f1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{5e041577-494c-40cd-94de-591a8d282fd9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\App\Main.cpp">
@@ -29,6 +32,12 @@
     </ClCompile>
     <ClCompile Include="Source\App\FluidSimApp.cpp">
       <Filter>Source\App</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\GraphicsCore.cpp">
+      <Filter>Source\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Core\Renderer.cpp">
+      <Filter>Source\Core</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -47,5 +56,19 @@
     <ClInclude Include="Source\Core\d3dx12.h">
       <Filter>Source\Core</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Core\GraphicsCore.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Renderer.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\BasicVS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\BasicPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

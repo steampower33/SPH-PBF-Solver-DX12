@@ -10,6 +10,8 @@
 #include <iostream>
 #include <algorithm>
 #include <assert.h>
+#include <filesystem>
+#include <fstream>
 
 // DirectX 12 Core
 #include <d3d12.h>
@@ -18,11 +20,16 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <DirectXPackedVector.h>
+#include <dxcapi.h>
 
 // Libs
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "dxcompiler.lib")
 
 #include "Helpers.h"
+
+using Microsoft::WRL::ComPtr;
+using namespace DirectX;

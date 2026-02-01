@@ -1,5 +1,8 @@
 #pragma once
 
+#include "GraphicsCore.h"
+#include "Renderer.h"
+
 class FluidSimApp {
 public:
     FluidSimApp() {}
@@ -15,6 +18,9 @@ public:
     bool Run();
 
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
+
+    GraphicsCore m_GraphicsCore;
+    Renderer m_Renderer;
 
 private:
     float m_Width = 1280.0f;
