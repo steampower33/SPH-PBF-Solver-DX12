@@ -22,10 +22,6 @@ public:
 private:
     ID3D12Device* m_pDevice = nullptr;
 
-    ComPtr<IDxcCompiler3> m_Compiler;
-    ComPtr<IDxcUtils> m_Utils;
-    ComPtr<IDxcIncludeHandler> m_IncludeHandler;
-
     ComPtr<IDxcBlob> m_ParticleVS;
     ComPtr<IDxcBlob> m_ParticlePS;
     ComPtr<ID3D12RootSignature> m_RenderParticleRootSig;

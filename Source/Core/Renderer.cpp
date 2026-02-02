@@ -1,4 +1,3 @@
-
 #include "Vertex.h"
 
 #include "Renderer.h"
@@ -36,11 +35,6 @@ void Renderer::Render(ID3D12GraphicsCommandList* cmdList, const SphSolver* solve
 void Renderer::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper)
 {
     m_pDevice = device;
-
-    // Initialize DXC Compiler interfaces
-    ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&m_Utils)));
-    ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&m_Compiler)));
-    ThrowIfFailed(m_Utils->CreateDefaultIncludeHandler(&m_IncludeHandler));
 
     // Initialize Resources
     InitShaders(shaderHelper);

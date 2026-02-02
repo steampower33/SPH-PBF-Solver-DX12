@@ -3,6 +3,7 @@ struct VSOutput
     float4 pos : SV_POSITION;
     float2 uv : TEXCOORD0;
     float3 viewPos : TEXCOORD1;
+    float SortRatio : TEXCOORD2;
 };
 
 float4 main(VSOutput input) : SV_Target
@@ -28,8 +29,13 @@ float4 main(VSOutput input) : SV_Target
     // Simple directional lighting (assuming light comes from the camera)
     float diffuse = max(dot(normal, float3(0, 0, 1)), 0.0f);
     
-    // Apply fluid color (Blue-ish tint)
-    float3 color = float3(0.0f, 0.5f, 1.0f) * diffuse;
+    // [NEW] Debug Color Mapping
+    // Low Index (0) -> Red
+    // High Index (1) -> Blue
+    float3 debugColor = lerp(float3(1, 0, 0), float3(0, 0, 1), input.SortRatio);
 
-    return float4(color, 1.0f);
+    // Apply lighting to the debug color
+    float3 finalColor = debugColor * diffuse;
+
+    return float4(finalColor, 1.0f);
 }

@@ -49,6 +49,7 @@ bool FluidSimApp::Run()
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
 		m_Solver.Update(cmdList, 0.016f);
+		m_Solver.RunBitonicSort(cmdList);
 
 		m_Renderer.Render(cmdList, &m_Solver, view, proj);
 
@@ -106,8 +107,8 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 
 	m_Renderer.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
 
-	UINT numParticles = 100; // Increased for visibility
-	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, 1000, &m_ShaderHelper);
+	UINT numParticles = 1024; // Increased for visibility
+	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, numParticles, &m_ShaderHelper);
 
 	m_GraphicsCore.EndFrame();
 }

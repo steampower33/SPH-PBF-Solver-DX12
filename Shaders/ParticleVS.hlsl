@@ -26,6 +26,7 @@ struct VSOutput
     float4 PosH : SV_POSITION;
     float2 UV : TEXCOORD0;
     float3 ViewPos : TEXCOORD1;
+    float SortRatio : TEXCOORD2;
 };
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
@@ -45,6 +46,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     output.PosH = mul(float4(finalViewPos, 1.0f), g_Proj);
     output.UV = input.UV;
     output.ViewPos = finalViewPos;
+    output.SortRatio = (float) instanceID / 1024.0f;
 
     return output;
 }
