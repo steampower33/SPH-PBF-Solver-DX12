@@ -15,7 +15,6 @@ public:
 	void EndFrame();
 	void MoveToNextFrame();
 
-	// Getter
 	ID3D12Device* GetDevice() const { return m_Device.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return m_CommandQueue.Get(); }
 	ID3D12GraphicsCommandList* GetCommandList() const { return m_CommandList.Get(); }

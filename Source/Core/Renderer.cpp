@@ -1,35 +1,72 @@
+
+#include "Vertex.h"
+
 #include "Renderer.h"
 
-void Renderer::Initialize(ID3D12Device* device)
+void Renderer::Render(ID3D12GraphicsCommandList* cmdList, const SphSolver* solver, const SM::Matrix& view, const SM::Matrix& proj)
+{
+    cmdList->SetGraphicsRootSignature(m_RenderParticleRootSig.Get());
+
+    ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+    cmdList->SetDescriptorHeaps(1, heaps);
+
+    struct Params {
+        SM::Matrix View;
+        SM::Matrix Proj;
+        float Radius;
+    } params;
+
+    params.View = view.Transpose();
+    params.Proj = proj.Transpose();
+    params.Radius = 0.5f;
+
+    cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &params, 0);
+
+    cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+
+    cmdList->SetPipelineState(m_RenderParticlePSO.Get());
+
+    cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
+    cmdList->IASetIndexBuffer(&m_QuadIBView);
+    cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    cmdList->DrawIndexedInstanced(6, solver->GetNumParticles(), 0, 0, 0);
+}
+
+void Renderer::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper)
 {
     m_pDevice = device;
 
-	ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&m_Utils)));
-	ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&m_Compiler)));
-	ThrowIfFailed(m_Utils->CreateDefaultIncludeHandler(&m_IncludeHandler));
+    // Initialize DXC Compiler interfaces
+    ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&m_Utils)));
+    ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&m_Compiler)));
+    ThrowIfFailed(m_Utils->CreateDefaultIncludeHandler(&m_IncludeHandler));
 
-    InitShaders();
+    // Initialize Resources
+    InitShaders(shaderHelper);
     InitRootSignatures();
     InitPSOs();
+    InitQuadMesh(cmdList);
 }
 
-void Renderer::InitShaders()
+void Renderer::InitShaders(ShaderHelper* helper)
 {
-    CompileShader(L"BasicVS.hlsl", L"main", L"vs_6_0", m_BasicVS);
-    CompileShader(L"BasicPS.hlsl", L"main", L"ps_6_0", m_BasicPS);
+    // Compile Vertex and Pixel shaders using the helper
+    m_ParticleVS = helper->Compile(L"ParticleVS.hlsl", L"main", L"vs_6_0");
+    m_ParticlePS = helper->Compile(L"ParticlePS.hlsl", L"main", L"ps_6_0");
 }
 
 void Renderer::InitRootSignatures()
 {
-    CreateBasicRootSignature();
+    CreateRenderParticleRootSignature();
 }
 
 void Renderer::InitPSOs()
 {
-    CreateBasicPSO();
+    CreateRenderParticlePSO();
 }
 
-void Renderer::CreateBasicRootSignature()
+void Renderer::CreateRenderParticleRootSignature()
 {
     D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
     featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
@@ -39,14 +76,26 @@ void Renderer::CreateBasicRootSignature()
         featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
     }
 
+    CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+
+    // Parameter 0: 33 Constants (View Matrix + Proj Matrix + Radius)
+    rootParameters[0].InitAsConstants(33, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+
+    // Parameter 1: Descriptor Table for SRV (StructuredBuffer)
+    CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+    srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+    rootParameters[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+
+    // Root Signature Description
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init_1_1(
-        0,
-        nullptr,
-        0, nullptr, // No Static Samplers
+        _countof(rootParameters),
+        rootParameters,
+        0, nullptr,
         D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
     );
 
+    // Serialize and Create
     ComPtr<ID3DBlob> signatureBlob;
     ComPtr<ID3DBlob> errorBlob;
 
@@ -70,149 +119,104 @@ void Renderer::CreateBasicRootSignature()
         0,
         signatureBlob->GetBufferPointer(),
         signatureBlob->GetBufferSize(),
-        IID_PPV_ARGS(&m_BasicRootSig)
+        IID_PPV_ARGS(&m_RenderParticleRootSig)
     ));
 
-    m_BasicRootSig->SetName(L"BasicRootSignature_NoTexture");
+    m_RenderParticleRootSig->SetName(L"RenderParticleRootSignature_NoTexture");
 }
 
-void Renderer::CreateBasicPSO()
+void Renderer::CreateRenderParticlePSO()
 {
+    // Define Input Layout for the Quad Mesh
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
     {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+        // SemanticName, Index, Format, Slot, AlignedByteOffset, Classification, InstanceDataStepRate
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,    0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
     };
 
     // 1. Define PSO descriptor
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
-    // 2. Bind Shader and Root Signature
+    // 2. Bind Input Layout and Root Signature
     psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
-    psoDesc.pRootSignature = m_BasicRootSig.Get();        // Must be created beforehand
+    psoDesc.pRootSignature = m_RenderParticleRootSig.Get();
 
-    // For Vertex Shader
+    // Attach Shaders
     psoDesc.VS = CD3DX12_SHADER_BYTECODE(
-        m_BasicVS->GetBufferPointer(),
-        m_BasicVS->GetBufferSize()
+        m_ParticleVS->GetBufferPointer(),
+        m_ParticleVS->GetBufferSize()
     );
 
-    // For Pixel Shader
     psoDesc.PS = CD3DX12_SHADER_BYTECODE(
-        m_BasicPS->GetBufferPointer(),
-        m_BasicPS->GetBufferSize()
+        m_ParticlePS->GetBufferPointer(),
+        m_ParticlePS->GetBufferSize()
     );
 
-    // 3. Rasterizer State (Default: Back-face culling, Solid fill)
+    // 3. Configure State (Rasterizer, Blend, Depth)
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-
-    // 4. Blend State (Default: Blending disabled)
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-
-    // 5. Depth Stencil State (Default: Depth test enabled)
     psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 
-    // 6. Output Formats (CRITICAL: Must match SwapChain/DSV formats)
+    // 4. Set Output Formats
     psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM; // Matches SwapChain format
-    psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;  // Matches Depth Buffer format
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 
-    // 7. Topology & Multisample settings
+    // 5. Topology Settings (Triangle List for Quads)
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.SampleDesc.Count = 1; // No MSAA
+    psoDesc.SampleDesc.Count = 1;
     psoDesc.SampleDesc.Quality = 0;
 
-    // 8. Create the PSO
-    ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_BasicPSO)));
+    // 6. Create the PSO
+    ThrowIfFailed(m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_RenderParticlePSO)));
 }
 
-void Renderer::CompileShader(
-    const std::wstring& filename,
-    const std::wstring& entryPoint,
-    const std::wstring& targetProfile,
-    ComPtr<IDxcBlob>& outBlob)
+void Renderer::InitQuadMesh(ID3D12GraphicsCommandList* cmdList)
 {
-    // 1. Construct full path
-    std::wstring shaderBaseName = L"./Shaders/";
-    std::wstring fullPath = shaderBaseName + filename;
+    // Define Quad Vertices (Local Space)
+    Vertex quadVertices[] = {
+        { { -0.5f,  0.5f, 0.0f }, { 0.0f, 0.0f } }, // Top-Left
+        { {  0.5f,  0.5f, 0.0f }, { 1.0f, 0.0f } }, // Top-Right
+        { { -0.5f, -0.5f, 0.0f }, { 0.0f, 1.0f } }, // Bottom-Left
+        { {  0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f } }, // Bottom-Right
+    };
 
-    // 2. Load the shader file
-    ComPtr<IDxcBlobEncoding> source;
-    HRESULT hr = m_Utils->LoadFile(fullPath.c_str(), nullptr, &source);
-    if (FAILED(hr))
-    {
-        std::wstring errorMsg = L"Failed to load shader file: " + fullPath;
-        MessageBox(nullptr, errorMsg.c_str(), L"Shader Load Error", MB_OK);
-        ThrowIfFailed(hr);
-    }
+    // Define Indices (Two Triangles)
+    uint16_t quadIndices[] = {
+        0, 1, 2,
+        1, 3, 2
+    };
 
-    DxcBuffer buffer = {};
-    buffer.Ptr = source->GetBufferPointer();
-    buffer.Size = source->GetBufferSize();
-    buffer.Encoding = DXC_CP_ACP;
+    const UINT vbByteSize = sizeof(quadVertices);
+    const UINT ibByteSize = sizeof(quadIndices);
 
-    // 3. Setup Compilation Arguments
-    std::wstring shaderName = std::filesystem::path(filename).stem().wstring();
-    std::wstring pdbFilename = L"./PDB/" + shaderName + L".pdb";
-    std::wstring shaderIncludePath = std::filesystem::absolute(L"./Shaders").wstring();
+    // Create and Upload Vertex Buffer
+    m_QuadVB = Helpers::CreateDefaultBuffer(
+        m_pDevice,
+        cmdList,
+        quadVertices,
+        vbByteSize,
+        m_QuadVBUpload // Keep upload buffer alive until execution
+    );
 
-    std::vector<LPCWSTR> args;
-    args.push_back(L"-E");
-    args.push_back(entryPoint.c_str());
-    args.push_back(L"-T");
-    args.push_back(targetProfile.c_str());
-    args.push_back(L"-I");
-    args.push_back(shaderIncludePath.c_str());
+    // Initialize Vertex Buffer View
+    m_QuadVBView.BufferLocation = m_QuadVB->GetGPUVirtualAddress();
+    m_QuadVBView.StrideInBytes = sizeof(Vertex);
+    m_QuadVBView.SizeInBytes = vbByteSize;
 
-#if defined(_DEBUG)
-    args.push_back(L"-Zi"); // Enable Debug Info
-    args.push_back(L"-Od"); // Disable Optimization
-    args.push_back(L"-Fd"); // PDB File Name
-    args.push_back(pdbFilename.c_str());
-#else
-    args.push_back(L"-O3"); // High Optimization
-#endif
+    // Create and Upload Index Buffer
+    m_QuadIB = Helpers::CreateDefaultBuffer(
+        m_pDevice,
+        cmdList,
+        quadIndices,
+        ibByteSize,
+        m_QuadIBUpload
+    );
 
-    // 4. Compile
-    ComPtr<IDxcResult> result;
-    ThrowIfFailed(m_Compiler->Compile(
-        &buffer,
-        args.data(),
-        static_cast<UINT32>(args.size()),
-        m_IncludeHandler.Get(),
-        IID_PPV_ARGS(&result)
-    ));
-
-    // 5. Check for Errors/Warnings
-    ComPtr<IDxcBlobUtf8> errors;
-    result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
-
-    if (errors && errors->GetStringLength() > 0)
-    {
-        OutputDebugStringA("================ Shader Compile Output ================\n");
-        OutputDebugStringA((char*)errors->GetBufferPointer());
-        OutputDebugStringA("=======================================================\n");
-    }
-
-    // 6. Handle Status (Fail if compilation failed)
-    HRESULT hrStatus;
-    result->GetStatus(&hrStatus);
-    ThrowIfFailed(hrStatus);
-
-    // 7. Save PDB (Optional but recommended for debugging)
-    ComPtr<IDxcBlob> pdbBlob;
-    result->GetOutput(DXC_OUT_PDB, IID_PPV_ARGS(&pdbBlob), nullptr);
-    if (pdbBlob)
-    {
-        std::filesystem::create_directories(L"./PDB");
-        std::ofstream pdbFile(pdbFilename, std::ios::binary);
-        if (pdbFile)
-        {
-            pdbFile.write((const char*)pdbBlob->GetBufferPointer(), pdbBlob->GetBufferSize());
-        }
-    }
-
-    // 8. Retrieve Compiled Object (The Shader Blob)
-    ThrowIfFailed(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&outBlob), nullptr));
+    // Initialize Index Buffer View
+    m_QuadIBView.BufferLocation = m_QuadIB->GetGPUVirtualAddress();
+    m_QuadIBView.Format = DXGI_FORMAT_R16_UINT;
+    m_QuadIBView.SizeInBytes = ibByteSize;
 }

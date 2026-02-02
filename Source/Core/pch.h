@@ -1,5 +1,7 @@
 #pragma once
 
+#define NOMINMAX
+
 // Windows & Standard
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -12,6 +14,7 @@
 #include <assert.h>
 #include <filesystem>
 #include <fstream>
+#include <random>
 
 // DirectX 12 Core
 #include <d3d12.h>
@@ -32,4 +35,7 @@
 #include "Helpers.h"
 
 using Microsoft::WRL::ComPtr;
-using namespace DirectX;
+namespace DX = DirectX;
+
+#include "SimpleMath.h"
+namespace SM = DirectX::SimpleMath;

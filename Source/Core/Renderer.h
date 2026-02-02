@@ -1,10 +1,8 @@
 #pragma once
 
-struct Vertex
-{
-    XMFLOAT3 position;
-    XMFLOAT4 color;
-};
+#include "SphSolver.h"
+#include "ShaderHelper.h"
+struct Vertex;
 
 class Renderer
 {
@@ -14,30 +12,38 @@ public:
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
 
-    void Initialize(ID3D12Device* device);
+    void Render(
+        ID3D12GraphicsCommandList* cmdList,
+        const SphSolver* solver,
+        const SM::Matrix& view, const SM::Matrix& proj);
+
+    void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper);
 
 private:
-    ID3D12Device* m_pDevice;
+    ID3D12Device* m_pDevice = nullptr;
 
     ComPtr<IDxcCompiler3> m_Compiler;
     ComPtr<IDxcUtils> m_Utils;
     ComPtr<IDxcIncludeHandler> m_IncludeHandler;
 
-    ComPtr<IDxcBlob> m_BasicVS;
-    ComPtr<IDxcBlob> m_BasicPS;
-    ComPtr<ID3D12RootSignature> m_BasicRootSig;
-    ComPtr<ID3D12PipelineState> m_BasicPSO;
+    ComPtr<IDxcBlob> m_ParticleVS;
+    ComPtr<IDxcBlob> m_ParticlePS;
+    ComPtr<ID3D12RootSignature> m_RenderParticleRootSig;
+    ComPtr<ID3D12PipelineState> m_RenderParticlePSO;
 
-    void InitShaders();
+    ComPtr<ID3D12Resource> m_QuadVB;
+    ComPtr<ID3D12Resource> m_QuadIB;
+    ComPtr<ID3D12Resource> m_QuadVBUpload;
+    ComPtr<ID3D12Resource> m_QuadIBUpload;
+    D3D12_VERTEX_BUFFER_VIEW m_QuadVBView = {};
+    D3D12_INDEX_BUFFER_VIEW  m_QuadIBView = {};
+
+private:
+    void InitShaders(ShaderHelper* helper);
     void InitRootSignatures();
     void InitPSOs();
+    void InitQuadMesh(ID3D12GraphicsCommandList* cmdList);
 
-    void CreateBasicRootSignature();
-    void CreateBasicPSO();
-
-    void CompileShader(
-        const std::wstring& filename,
-        const std::wstring& entryPoint,
-        const std::wstring& targetProfile,
-        ComPtr<IDxcBlob>& outBlob);
+    void CreateRenderParticleRootSignature();
+    void CreateRenderParticlePSO();
 };
