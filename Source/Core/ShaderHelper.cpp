@@ -69,6 +69,21 @@ ComPtr<IDxcBlob> ShaderHelper::Compile(
     result->GetStatus(&status);
     ThrowIfFailed(status);
 
+    std::wstring shaderName = std::filesystem::path(filename).stem().wstring();
+    std::wstring pdbFilename = L"./PDB/" + shaderName + L".pdb";
+
+    ComPtr<IDxcBlob> pdbBlob;
+    result->GetOutput(DXC_OUT_PDB, IID_PPV_ARGS(&pdbBlob), nullptr);
+    if (pdbBlob)
+    {
+        std::filesystem::create_directories(L"./PDB");
+        std::ofstream pdbFile(pdbFilename, std::ios::binary);
+        if (pdbFile)
+        {
+            pdbFile.write((const char*)pdbBlob->GetBufferPointer(), pdbBlob->GetBufferSize());
+        }
+    }
+
     // Get Blob
     Microsoft::WRL::ComPtr<IDxcBlob> outBlob;
     ThrowIfFailed(result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&outBlob), nullptr));

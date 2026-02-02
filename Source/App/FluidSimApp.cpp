@@ -2,13 +2,15 @@
 
 #include "FluidSimApp.h"
 
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 bool FluidSimApp::Run()
 {
 	GameTimer timer;
 	timer.Reset();
 
-	SM::Vector3 eye(0.0f, 0.0f, -30.0f);
-	SM::Vector3 target(0.0f, 0.0f, 1.0f);
+	SM::Vector3 eye(0.0f, 0.0f, 30.0f);
+	SM::Vector3 target(0.0f, 0.0f, 0.0f);
 	SM::Vector3 up(0.0f, 1.0f, 0.0f);
 
 	SM::Matrix view = SM::Matrix::CreateLookAt(eye, target, up);
@@ -42,16 +44,19 @@ bool FluidSimApp::Run()
 		if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
 		{
 			PostQuitMessage(0);
-			break;
 		}
 
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-		m_Solver.Update(cmdList, 0.016f);
-		m_Solver.RunBitonicSort(cmdList);
+		float simDt = 1.0f / 144.0f;
+		m_Solver.Update(cmdList, simDt);
 
 		m_Renderer.Render(cmdList, &m_Solver, view, proj);
+
+		m_Gui.BeginFrame();
+		m_Gui.DrawControlPanel(&m_Solver);
+		m_Gui.EndFrame(cmdList);
 
 		m_GraphicsCore.EndFrame();
 	}
@@ -61,8 +66,8 @@ bool FluidSimApp::Run()
 
 LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	//if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
-	//	return true;
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
+		return true;
 
 	switch (message)
 	{
@@ -75,8 +80,21 @@ LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
 	return 0;
 }
 
+FluidSimApp::~FluidSimApp()
+{
+	m_GraphicsCore.WaitForGpu();
+	m_Gui.Shutdown();
+}
+
 void FluidSimApp::Initialize(HINSTANCE hInstance)
 {
+	// Check to see if a copy of WinPixGpuCapturer.dll has already been injected into the application.
+	// This may happen if the application is launched through the PIX UI.
+	if (GetModuleHandle(L"WinPixGpuCapturer.dll") == 0)
+	{
+		LoadLibrary(GetLatestWinPixGpuCapturerPath().c_str());
+	}
+
 	WCHAR WindowClass[] = L"SPH-PBF-Solver-DX12";
 	WCHAR Title[] = L"SPH-PBF-Solver-DX12";
 
@@ -107,8 +125,56 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 
 	m_Renderer.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
 
-	UINT numParticles = 1024; // Increased for visibility
-	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, numParticles, &m_ShaderHelper);
+	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
+	m_Gui.Initialize(
+		m_GraphicsCore.GetDevice(),
+		hWnd,
+		GraphicsCore::FrameCount,
+		m_GraphicsCore.GetCommandQueue()
+	);
 
 	m_GraphicsCore.EndFrame();
+}
+
+std::wstring FluidSimApp::GetLatestWinPixGpuCapturerPath()
+{
+	LPWSTR programFilesPath = nullptr;
+	SHGetKnownFolderPath(FOLDERID_ProgramFiles, KF_FLAG_DEFAULT, NULL, &programFilesPath);
+
+	std::wstring pixSearchPath = programFilesPath + std::wstring(L"\\Microsoft PIX\\*");
+
+	WIN32_FIND_DATA findData;
+	bool foundPixInstallation = false;
+	wchar_t newestVersionFound[MAX_PATH] = L"";
+
+	HANDLE hFind = FindFirstFile(pixSearchPath.c_str(), &findData);
+	if (hFind != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			if (((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) &&
+				(findData.cFileName[0] != '.'))
+			{
+				if (!foundPixInstallation || wcscmp(newestVersionFound, findData.cFileName) <= 0)
+				{
+					foundPixInstallation = true;
+					StringCchCopy(newestVersionFound, _countof(newestVersionFound), findData.cFileName);
+				}
+			}
+		} while (FindNextFile(hFind, &findData) != 0);
+	}
+
+	FindClose(hFind);
+
+	if (!foundPixInstallation)
+	{
+		return L"";
+	}
+
+	wchar_t output[MAX_PATH];
+	StringCchCopy(output, pixSearchPath.length(), pixSearchPath.data());
+	StringCchCat(output, MAX_PATH, &newestVersionFound[0]);
+	StringCchCat(output, MAX_PATH, L"\\WinPixGpuCapturer.dll");
+
+	return std::wstring(output);
 }

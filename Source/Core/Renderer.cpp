@@ -17,7 +17,7 @@ void Renderer::Render(ID3D12GraphicsCommandList* cmdList, const SphSolver* solve
 
     params.View = view.Transpose();
     params.Proj = proj.Transpose();
-    params.Radius = 0.5f;
+    params.Radius = solver->m_SimParams.CellSize * 0.5f;
 
     cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &params, 0);
 

@@ -4,11 +4,12 @@
 #include "Renderer.h"
 #include "SphSolver.h"
 #include "ShaderHelper.h"
+#include "SimGui.h"
 
 class FluidSimApp {
 public:
 	FluidSimApp() {}
-	~FluidSimApp() {}
+	~FluidSimApp();
 
 	// [Rule] System classes should NOT be copied.
 	// Copying a core system creates ambiguity in resource ownership.
@@ -22,13 +23,16 @@ public:
 	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 	GraphicsCore m_GraphicsCore;
-	Renderer m_Renderer;
-	SphSolver m_Solver;
+	Renderer	 m_Renderer;
+	SphSolver    m_Solver;
 	ShaderHelper m_ShaderHelper;
+	SimGui       m_Gui;
 
 private:
 	float m_Width = 1280.0f;
 	float m_Height = 720.0f;
 	float m_AspectRatio = 0.0f;
 	float m_ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f, };
+
+	static std::wstring GetLatestWinPixGpuCapturerPath();
 };

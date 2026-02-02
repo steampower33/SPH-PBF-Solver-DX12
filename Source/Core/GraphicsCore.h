@@ -14,6 +14,7 @@ public:
 	ID3D12GraphicsCommandList* BeginFrame();
 	void EndFrame();
 	void MoveToNextFrame();
+	void WaitForGpu();
 
 	ID3D12Device* GetDevice() const { return m_Device.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return m_CommandQueue.Get(); }

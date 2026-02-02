@@ -8,12 +8,14 @@ struct Particle
 	float Density;      // Padding for alignment/density
 	SM::Vector3 Velocity;
 	float Pressure;     // Padding for alignment/pressure
+	SM::Vector3 OldPosition;
+	float Padding;
 };
 
 class SphSolver
 {
 public:
-	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, UINT numParticles, ShaderHelper* shaderHelper);
+	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper);
 
 	void Update(ID3D12GraphicsCommandList* cmdList, float dt);
 
@@ -23,6 +25,21 @@ public:
 	UINT GetNumParticles() const { return m_NumParticles; }
 	ID3D12DescriptorHeap* GetSrvHeap() const { return m_SrvHeap.Get(); }
 
+	struct SimParams
+	{
+		float DeltaTime;
+		UINT NumParticles;
+		float CellSize = 0.1f;
+		UINT GridDim = 128;
+		float Mass = 5.0f;
+		float RestDensity = 1000.0f;
+		float Viscosity = 0.0001f;
+		float p0;
+		SM::Vector4 Box = {-20.0f, 20.0f, -10.0f, 10.0f};
+	} m_SimParams;
+	
+	int m_SolverIterations = 1;
+
 private:
 	ComPtr<ID3D12Resource> m_ParticleBuffer;
 	ComPtr<ID3D12Resource> m_UploadBuffer;
@@ -30,13 +47,6 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_SrvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_UavHeap;
 
-	struct SimParams
-	{
-		float DeltaTime;
-		UINT NumParticles;
-		float CellSize;  // Critical for Spatial Hashing
-		UINT GridDim;    // Critical for Spatial Hashing
-	};
 	ComPtr<ID3D12RootSignature> m_ComputeRootSig;
 	ComPtr<ID3D12PipelineState> m_IntegrationPSO;
 
@@ -46,7 +56,7 @@ private:
 
 	void CreateUavHeap(ID3D12Device* device);
 	void CreateComputeRootSignature(ID3D12Device* device);
-	void CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelper);
+	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper);
 
 private:
 	// --- Sort Resources ---
@@ -61,5 +71,36 @@ private:
 	};
 
 	void CreateSortRootSignature(ID3D12Device* device);
-	void CreateSortPSO(ID3D12Device* device, ShaderHelper* shaderHelper);
+	void CreateSortPSO(ID3D12Device* device, ShaderHelper* helper);
+
+private:
+	ComPtr<ID3D12Resource> m_GridIndicesBuffer;
+	ComPtr<ID3D12Resource> m_GridIndicesUpload;
+
+	ComPtr<ID3D12RootSignature> m_GridMapRootSig;
+	ComPtr<ID3D12PipelineState> m_ClearGridPSO;
+	ComPtr<ID3D12PipelineState> m_BuildGridPSO;
+
+
+	void CreateGridMapRootSignature(ID3D12Device* device);
+	void CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper);
+
+private:
+	ComPtr<ID3D12Resource> m_DensityBuffer;
+	ComPtr<ID3D12Resource> m_DensityUpload;
+	ComPtr<ID3D12Resource> m_LambdaBuffer;
+	ComPtr<ID3D12Resource> m_LambdaUpload;
+
+	ComPtr<ID3D12RootSignature> m_PbfSolverRootSig;
+	ComPtr<ID3D12PipelineState> m_DensityLambdaPSO;
+	ComPtr<ID3D12PipelineState> m_DeltaPosPSO;
+
+	void CreatePbfSolverRootSignature(ID3D12Device* device);
+	void CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helper);
+	void CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper);
+
+private:
+	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
+
+	void CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper);
 };

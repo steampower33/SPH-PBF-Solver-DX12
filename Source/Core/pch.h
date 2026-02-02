@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <shlobj.h>
+#include <strsafe.h>
 
 // DirectX 12 Core
 #include <d3d12.h>

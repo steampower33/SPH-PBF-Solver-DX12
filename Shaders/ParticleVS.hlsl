@@ -11,6 +11,8 @@ struct Particle
     float Density;
     float3 Velocity;
     float Pressure;
+    float3 OldPosition;
+    float Padding;
 };
 
 StructuredBuffer<Particle> g_Particles : register(t0);
@@ -26,14 +28,15 @@ struct VSOutput
     float4 PosH : SV_POSITION;
     float2 UV : TEXCOORD0;
     float3 ViewPos : TEXCOORD1;
-    float SortRatio : TEXCOORD2;
+    float Density : TEXCOORD2;
 };
 
 VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput output;
 
-    float3 particleWorldPos = g_Particles[instanceID].Position;
+    Particle p = g_Particles[instanceID];
+    float3 particleWorldPos = p.Position;
 
     float4 viewPos4 = mul(float4(particleWorldPos, 1.0f), g_View);
     float3 centerViewPos = viewPos4.xyz;
@@ -46,7 +49,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     output.PosH = mul(float4(finalViewPos, 1.0f), g_Proj);
     output.UV = input.UV;
     output.ViewPos = finalViewPos;
-    output.SortRatio = (float) instanceID / 1024.0f;
+    output.Density = p.Density;
 
     return output;
 }

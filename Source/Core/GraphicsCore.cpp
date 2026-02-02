@@ -67,7 +67,7 @@ void GraphicsCore::EndFrame()
 	ID3D12CommandList* ppCommandLists[] = { m_CommandList.Get() };
 	m_CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-	ThrowIfFailed(m_SwapChain->Present(1, 0));
+	ThrowIfFailed(m_SwapChain->Present(0, 0));
 
 	MoveToNextFrame();
 }
@@ -87,6 +87,19 @@ void GraphicsCore::MoveToNextFrame()
 	{
 		ThrowIfFailed(m_Fence->SetEventOnCompletion(m_FenceValues[m_FrameIndex], m_FenceEvent));
 		WaitForSingleObjectEx(m_FenceEvent, INFINITE, FALSE);
+	}
+}
+
+void GraphicsCore::WaitForGpu()
+{
+	if (m_CommandQueue && m_Fence && m_FenceEvent)
+	{
+		ThrowIfFailed(m_CommandQueue->Signal(m_Fence.Get(), m_CurrentFenceValue));
+
+		ThrowIfFailed(m_Fence->SetEventOnCompletion(m_CurrentFenceValue, m_FenceEvent));
+		WaitForSingleObject(m_FenceEvent, INFINITE);
+
+		m_CurrentFenceValue++;
 	}
 }
 
