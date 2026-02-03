@@ -44,14 +44,16 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
 			if (currentSimFPS < 1) currentSimFPS = 1;
 			simParams.DeltaTime = 1.0f / (float)currentSimFPS;
 		} });
-		row("Iteration", [&] { ImGui::SliderInt("##Iteration", &solver->m_SolverIterations, 1, 10); });
-		row("CellSize", [&] {ImGui::InputFloat("##CellSize", &simParams.CellSize, 0.1f, 0.1f); });
-		row("Particle Mass   ", [&] { ImGui::InputFloat("##Particle Mass", &simParams.Mass, 0.1f, 0.1f); });
-		row("Rest Density", [&] { ImGui::InputFloat("##Rest Density", &simParams.RestDensity, 1.0f, 1.0f); });
-		row("Viscosity", [&] { ImGui::InputFloat("##Viscosity", &simParams.Viscosity, 0.0001f, 0.0001f, "%.4f"); });
-		row("GravityY", [&] { ImGui::InputFloat("##GravityY", &simParams.GravityY, 0.01f, 0.01f, "%.2f"); });
-		row("VisualRadius", [&] { ImGui::InputFloat("##VisualRadius", &renderParams.VisualRadius, 0.001f, 0.01f, "%.3f"); });
-		row("Box", [&] { ImGui::DragFloat4("Box", &simParams.Box.x, 0.01f, -30.0f, 30.0f); });
+		row("Iteration", [&] { ImGui::SliderInt("##Iteration", &solver->m_Iterations, 1, 10); });
+		row("CellSize", [&] {ImGui::DragFloat("##CellSize", &simParams.CellSize, 1e-4f, 1e-4f); simParams.CellSize = std::clamp(simParams.CellSize, 1e-4f, 1.0f); });
+		row("Particle Mass   ", [&] { ImGui::DragFloat("##Particle Mass", &simParams.Mass, 0.1f, 0.1f, 100.0f); });
+		row("Rest Density", [&] { ImGui::DragFloat("##Rest Density", &simParams.RestDensity, 1.0f, 1.0f); });
+		row("Viscosity", [&] { ImGui::DragFloat("##Viscosity", &simParams.Viscosity, 0.0001f, 0.0001f, 0.001f, "%.4f"); });
+		row("GravityY", [&] { ImGui::DragFloat("##GravityY", &simParams.GravityY, 0.01f, -10.0f, 10.0f, "%.2f"); });
+		row("VisualRadius", [&] { ImGui::DragFloat("##VisualRadius", &renderParams.VisualRadius, 0.001f, 0.01f, 1.0f, "%.3f"); });
+		row("BoxX", [&] { ImGui::DragFloat2("##BoxX", &simParams.BoxX.x, 0.01f, -30.0f, 30.0f); });
+		row("BoxY", [&] { ImGui::DragFloat2("##BoxY", &simParams.BoxY.x, 0.01f, -30.0f, 30.0f); });
+		row("BoxZ", [&] { ImGui::DragFloat2("##BoxZ", &simParams.BoxZ.x, 0.01f, -30.0f, 30.0f); });
 		ImGui::EndTable();
 	}
 	ImGui::EndChild();

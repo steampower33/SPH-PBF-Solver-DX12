@@ -61,7 +61,7 @@ public:
     void EndFrame(ID3D12GraphicsCommandList* cmdList);
     void DrawControlPanel(SphSolver* solver, Renderer* renderer);
 
-    bool m_IsPaused = false;
+    bool m_IsPaused = true;
 private:
     ComPtr<ID3D12DescriptorHeap>   m_SrvHeap;
     ExampleDescriptorHeapAllocator m_SrvAlloc;

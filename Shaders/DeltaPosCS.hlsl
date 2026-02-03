@@ -22,8 +22,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     int3 myGridPos = (int3) floor(myPos / g_CellSize);
     myGridPos += int3(1000, 1000, 1000);
 
-    //for (int z = -1; z <= 1; ++z)
-    int z = 0;
+    for (int z = -1; z <= 1; ++z)
     {
         for (int y = -1; y <= 1; ++y)
         {

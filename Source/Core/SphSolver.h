@@ -32,15 +32,19 @@ public:
 		float CellSize = 0.1f;
 		UINT GridDim = 128;
 
-		float Mass = 5.0f;
+		float Mass = 1.0f;
 		float RestDensity = 1000.0f;
 		float Viscosity = 0.0001f;
 		float GravityY = -9.81f;
 		
-		SM::Vector4 Box = {-20.0f, 20.0f, -10.0f, 10.0f};
+		SM::Vector2 BoxX = {-5.0f, 5.0f };
+		SM::Vector2 BoxY = {0.0f, 10.0f };
+
+		SM::Vector2 BoxZ = {-2.0f, 2.0f };
+		float pad[2];
 	} m_SimParams;
 	
-	int m_SolverIterations = 1;
+	int m_Iterations = 5;
 
 private:
 	ComPtr<ID3D12Resource> m_ParticleBuffer;
@@ -54,7 +58,7 @@ private:
 
 	UINT m_NumParticles = 0;
 
-	void InitRandomParticles(std::vector<Particle>& outParticles);
+	void InitParticles(std::vector<Particle>& outParticles);
 
 	void CreateUavHeap(ID3D12Device* device);
 	void CreateComputeRootSignature(ID3D12Device* device);
@@ -102,7 +106,10 @@ private:
 	void CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper);
 
 private:
+	ComPtr<ID3D12PipelineState> m_ConstraintPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
 
+	void CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper);
 	void CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper);
+
 };

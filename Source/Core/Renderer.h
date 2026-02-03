@@ -22,7 +22,7 @@ public:
     struct Params {
         SM::Matrix View;
         SM::Matrix Proj;
-        float VisualRadius = 0.05f;
+        float VisualRadius;
     } m_Params;
 private:
     ID3D12Device* m_pDevice = nullptr;

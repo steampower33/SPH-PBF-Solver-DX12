@@ -47,7 +47,7 @@ void Camera::OnMouseMove(WPARAM btnState, int x, int y)
         float dy = DX::XMConvertToRadians(0.25f * static_cast<float>(y - m_LastMousePos.y));
 
         m_Theta -= dx;
-        m_Phi -= dy;
+        m_Phi += dy;
 
         m_Phi = std::clamp(m_Phi, -DX::XM_PIDIV2 + 0.1f, DX::XM_PIDIV2 - 0.1f);
     }

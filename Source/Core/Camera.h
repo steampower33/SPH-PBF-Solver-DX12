@@ -24,7 +24,7 @@ private:
 	void UpdateViewMatrix();
 
 private:
-	SM::Vector3 m_EyePos = { 0.0f, 0.0f, 10.0f };
+	SM::Vector3 m_EyePos = { 0.0f, 0.0f, 1.0f };
 	SM::Vector3 m_Target = { 0.0f, 0.0f, 0.0f };
 	SM::Vector3 m_Up = SM::Vector3::Up; // (0, 1, 0)
 
@@ -36,8 +36,8 @@ private:
 
 	// Orbit Control
 	float m_Theta = 0.0f;   // Yaw
-	float m_Phi = 0.0f;     // Pitch
-	float m_Radius = 30.0f; // Zoom
+	float m_Phi = 0.2f;     // Pitch
+	float m_Radius = 15.0f; // Zoom
 
 	// Mouse State
 	POINT m_LastMousePos = { 0, 0 };

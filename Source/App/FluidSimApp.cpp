@@ -150,24 +150,37 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	WNDCLASSW wndclass = { 0, WndProc, 0, 0, 0, 0, 0, 0, 0, WindowClass };
 	RegisterClassW(&wndclass);
 
+	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+	m_Width = static_cast<float>(screenWidth) * 0.9f;
+	m_Height = m_Width * 9.0f / 16.0f;
+
 	DWORD dwStyle = WS_OVERLAPPEDWINDOW;
+
 	RECT wr = { 0, 0, (LONG)m_Width, (LONG)m_Height };
 	AdjustWindowRect(&wr, dwStyle, FALSE);
 
+	int windowWidth = wr.right - wr.left;
+	int windowHeight = wr.bottom - wr.top;
+
+	int xPos = (screenWidth - windowWidth) / 2;
+	int yPos = (screenHeight - windowHeight) / 2;
+
 	HWND hWnd = CreateWindowExW(0, WindowClass, Title,
 		dwStyle | WS_VISIBLE,
-		CW_USEDEFAULT, CW_USEDEFAULT,
-		wr.right - wr.left,   // This will be larger than 1280 (e.g., 1296)
-		wr.bottom - wr.top,   // This will be larger than 720 (e.g., 759)
+		xPos, yPos,
+		windowWidth,
+		windowHeight,
 		nullptr, nullptr, hInstance, nullptr);
 
 	SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)this);
 
 	RECT cr;
 	GetClientRect(hWnd, &cr);
-	m_Width = (float)(cr.right - cr.left);   // Should be EXACTLY 1280.0f
-	m_Height = (float)(cr.bottom - cr.top);  // Should be EXACTLY 720.0f
-	m_AspectRatio = m_Width / m_Height;      // Calculate Aspect Ratio
+	m_Width = (float)(cr.right - cr.left);
+	m_Height = (float)(cr.bottom - cr.top);
+	m_AspectRatio = m_Width / m_Height;
 
 	m_Solver.m_SimParams.DeltaTime = 1.0f / 144.0f;
 

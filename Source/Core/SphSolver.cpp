@@ -53,7 +53,9 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
 	cmdList->SetComputeRootDescriptorTable(1, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
 
-	for (int iter = 0; iter < m_SolverIterations; ++iter)
+	auto posBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_ParticleBuffer.Get());
+
+	for (int iter = 0; iter < m_Iterations; ++iter)
 	{
 		cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
 		cmdList->Dispatch(groups, 1, 1);
@@ -67,7 +69,11 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 		cmdList->SetPipelineState(m_DeltaPosPSO.Get());
 		cmdList->Dispatch(groups, 1, 1);
 
-		auto posBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_ParticleBuffer.Get());
+		cmdList->ResourceBarrier(1, &posBarrier);
+
+		cmdList->SetPipelineState(m_ConstraintPSO.Get());
+		cmdList->Dispatch(groups, 1, 1);
+
 		cmdList->ResourceBarrier(1, &posBarrier);
 	}
 
@@ -82,7 +88,7 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper)
 {
 	std::vector<Particle> particles(m_NumParticles);
-	InitRandomParticles(particles);
+	InitParticles(particles);
 
 	m_NumParticles = particles.size();
 
@@ -192,6 +198,8 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreatePbfSolverRootSignature(device);
 	CreateDensityLambdaPSO(device, shaderHelper);
 	CreateDeltaPosPSO(device, shaderHelper);
+
+	CreateConstraintPSO(device, shaderHelper);
 	CreateUpdateVelocityPSO(device, shaderHelper);
 }
 
@@ -235,35 +243,41 @@ void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelpe
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_IntegrationPSO)));
 }
 
-void SphSolver::InitRandomParticles(std::vector<Particle>& outParticles)
+void SphSolver::InitParticles(std::vector<Particle>& outParticles)
 {
 	outParticles.clear();
 
-	float spacing = m_SimParams.CellSize * 0.5f;
-	float startX = m_SimParams.Box.x * 0.5f;
-	float startY = m_SimParams.Box.z * 0.5f;
+	float spacing = m_SimParams.CellSize * 0.8f;
 
-	int cols = 512;
-	int rows = 256;
+	int x_ = 64;
+	int y_ = 64;
+	int z_ = 32;
 
-	for (int y = 0; y < rows; ++y)
-	{
-		for (int x = 0; x < cols; ++x)
-		{
-			Particle p = {};
+	float widthX = m_SimParams.BoxX.x + m_SimParams.BoxX.y;
+	float widthY = m_SimParams.BoxY.x + m_SimParams.BoxY.y;
+	float widthZ = m_SimParams.BoxZ.x + m_SimParams.BoxZ.y;
 
-			p.Position.x = startX + (x * spacing);
-			p.Position.y = startY + (y * spacing);
-			p.Position.z = 0.0f;
+	float startX = widthX * 0.5f - spacing * x_ * 0.5f;
+	float startY = widthY * 0.5f - spacing * y_ * 0.5f;;
+	float startZ = widthZ * 0.5f - spacing * z_ * 0.5f;
 
-			p.Velocity = SM::Vector3(0, 0, 0);
-			p.Density = 0.0f;
-			p.Pressure = 0.0f;
-			p.OldPosition = p.Position;
+	for (int z = 0; z < z_; z++)
+		for (int y = 0; y < y_; ++y)
+			for (int x = 0; x < x_; ++x)
+			{
+				Particle p = {};
 
-			outParticles.push_back(p);
-		}
-	}
+				p.Position.x = startX + (x * spacing);
+				p.Position.y = startY + (y * spacing);
+				p.Position.z = startZ + (z * spacing);
+
+				p.Velocity = SM::Vector3(0, 0, 0);
+				p.Density = 0.0f;
+				p.Pressure = 0.0f;
+				p.OldPosition = p.Position;
+
+				outParticles.push_back(p);
+			}
 
 }
 
@@ -426,6 +440,17 @@ void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_DeltaPosPSO)));
+}
+
+void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
+{
+	ComPtr<IDxcBlob> csBlob = helper->Compile(L"ConstraintCS.hlsl", L"main", L"cs_6_0");
+
+	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
+	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
+
+	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_ConstraintPSO)));
 }
 
 void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper)

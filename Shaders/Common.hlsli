@@ -22,7 +22,11 @@ cbuffer SimParams : register(b0)
     float g_Viscosity;
     float g_GravityY;
 
-    float4 g_Box;
+    float2 g_BoxX;
+    float2 g_BoxY;
+
+    float2 g_BoxZ;
+    float2 g_pad;
 };
 
 // [Core Logic] 3D Position -> 1D Grid Hash
@@ -42,48 +46,48 @@ uint GetGridHash(float3 pos)
             (uint) (gridPos.z * 83492791)) % (g_GridDim * g_GridDim * g_GridDim);
 }
 
-//#define PI 3.14159265359f
-
-//// -----------------------------------------------------------------------------
-//// 1. Poly6 Kernel
-//// Used for: Density Estimation
-//// Pros: Smooth, accurate for density.
-//// Cons: Gradient vanishes at r=0 (Bad for forces/pressure), so we don't use it for Lambda.
-//// -----------------------------------------------------------------------------
-//float Poly6Kernel(float rSq, float h)
-//{
-//    float hSq = h * h;
-//    if (rSq >= 0.0f && rSq <= hSq)
-//    {
-//        // Coeff = 315 / (64 * PI * h^9)
-//        float coeff = 315.0f / (64.0f * PI * pow(h, 9.0f));
-//        float term = hSq - rSq;
-//        return coeff * term * term * term;
-//    }
-//    return 0.0f;
-//}
-
-//// -----------------------------------------------------------------------------
-//// 2. Spiky Kernel Gradient (Magnitude)
-//// Used for: Gradient Calculation (Lambda & Position Delta)
-//// Pros: Non-zero gradient at r=0, prevents clustering/clumping.
-//// Returns: The scalar magnitude. You must multiply this by normalize(rVec).
-//// -----------------------------------------------------------------------------
-//float SpikyKernelGrad(float r, float h)
-//{
-//    // Note: r is distance (sqrt(rSq)), not squared distance.
-//    if (r > 0.0f && r <= h)
-//    {
-//        // Coeff = -45 / (PI * h^6)
-//        float coeff = -45.0f / (PI * pow(h, 6.0f));
-//        float term = h - r;
-//        return coeff * term * term;
-//    }
-//    return 0.0f;
-//}
-
+#define DIMENSION_3D
 #define PI 3.14159265359f
 
+#ifdef DIMENSION_3D
+// -----------------------------------------------------------------------------
+// 1. Poly6 Kernel
+// Used for: Density Estimation
+// Pros: Smooth, accurate for density.
+// Cons: Gradient vanishes at r=0 (Bad for forces/pressure), so we don't use it for Lambda.
+// -----------------------------------------------------------------------------
+float Poly6Kernel(float rSq, float h)
+{
+    float hSq = h * h;
+    if (rSq >= 0.0f && rSq <= hSq)
+    {
+        // Coeff = 315 / (64 * PI * h^9)
+        float coeff = 315.0f / (64.0f * PI * pow(h, 9.0f));
+        float term = hSq - rSq;
+        return coeff * term * term * term;
+    }
+    return 0.0f;
+}
+
+// -----------------------------------------------------------------------------
+// 2. Spiky Kernel Gradient (Magnitude)
+// Used for: Gradient Calculation (Lambda & Position Delta)
+// Pros: Non-zero gradient at r=0, prevents clustering/clumping.
+// Returns: The scalar magnitude. You must multiply this by normalize(rVec).
+// -----------------------------------------------------------------------------
+float SpikyKernelGrad(float r, float h)
+{
+    // Note: r is distance (sqrt(rSq)), not squared distance.
+    if (r > 0.0f && r <= h)
+    {
+        // Coeff = -45 / (PI * h^6)
+        float coeff = -45.0f / (PI * pow(h, 6.0f));
+        float term = h - r;
+        return coeff * term * term;
+    }
+    return 0.0f;
+}
+#else
 // -----------------------------------------------------------------------------
 // [2D Version] Poly6 Kernel
 // -----------------------------------------------------------------------------
@@ -116,3 +120,4 @@ float SpikyKernelGrad(float r, float h)
     }
     return 0.0f;
 }
+#endif

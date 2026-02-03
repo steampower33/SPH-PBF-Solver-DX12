@@ -11,12 +11,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     Particle p = gParticles[id];
 
-    float3 gravity = float3(0.0, g_GravityY, 0.0);
-    p.Velocity += gravity * g_DeltaTime;
-
-    p.OldPosition = p.Position;
-
-    p.Position += p.Velocity * g_DeltaTime;
+    float3 minBox = float3(g_BoxX.x, g_BoxY.x, g_BoxZ.x);
+    float3 maxBox = float3(g_BoxX.y, g_BoxY.y, g_BoxZ.y);
     
+    float epsilon = 0.001f;
+    p.Position = max(p.Position, minBox + epsilon);
+    p.Position = min(p.Position, maxBox - epsilon);
+
     gParticles[id] = p;
 }
