@@ -41,7 +41,11 @@ public:
 		SM::Vector2 BoxY = {0.0f, 10.0f };
 
 		SM::Vector2 BoxZ = {-2.0f, 2.0f };
-		float pad[2];
+		float dqScale = 0.2f;
+		float k = 0.0001f;
+
+		float n = 4.0f;
+		float pad0;
 	} m_SimParams;
 	
 	int m_Iterations = 5;

@@ -51,6 +51,9 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
 		row("Viscosity", [&] { ImGui::DragFloat("##Viscosity", &simParams.Viscosity, 0.0001f, 0.0001f, 0.001f, "%.4f"); });
 		row("GravityY", [&] { ImGui::DragFloat("##GravityY", &simParams.GravityY, 0.01f, -10.0f, 10.0f, "%.2f"); });
 		row("VisualRadius", [&] { ImGui::DragFloat("##VisualRadius", &renderParams.VisualRadius, 0.001f, 0.01f, 1.0f, "%.3f"); });
+		row("dqScale", [&] { ImGui::DragFloat("##dqScale", &simParams.dqScale, 0.01f, 0.0f, 10.0f, "%.3f"); });
+		row("k", [&] { ImGui::DragFloat("##k", &simParams.k, 0.0001f, 0.0f, 1.0f, "%.5f"); });
+		row("n", [&] { ImGui::DragFloat("##n", &simParams.n, 0.1f, 0.0f, 10.0f, "%.1f"); });
 		row("BoxX", [&] { ImGui::DragFloat2("##BoxX", &simParams.BoxX.x, 0.01f, -30.0f, 30.0f); });
 		row("BoxY", [&] { ImGui::DragFloat2("##BoxY", &simParams.BoxY.x, 0.01f, -30.0f, 30.0f); });
 		row("BoxZ", [&] { ImGui::DragFloat2("##BoxZ", &simParams.BoxZ.x, 0.01f, -30.0f, 30.0f); });

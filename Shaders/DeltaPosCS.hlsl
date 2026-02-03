@@ -19,6 +19,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float h = g_CellSize;
     float hSq = h * h;
 
+    // Eq (13) : W(dq, h)
+    float dq_len = g_dqScale * h;
+    float w_dq = Poly6Kernel(dq_len * dq_len, h);
+    
+    float k = g_k;
+    float n = g_n;
+    
     int3 myGridPos = (int3) floor(myPos / g_CellSize);
     myGridPos += int3(1000, 1000, 1000);
 
@@ -52,12 +59,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         float r = sqrt(rSq);
                         float lambdaJ = g_Lambdas[j];
                         
-                        // Scorr (Tensile Instability Fix)
-                        // float sCorr = -0.1f * pow(Poly6Kernel(rSq, h) / Poly6Kernel(0.1*h*0.1*h, h), 4);
-
-                        float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+                        // W(pi - pj, h)
+                        float w_ij = Poly6Kernel(rSq, h);
                         
-                        deltaPos += (lambdaI + lambdaJ) * gradW;
+                        // s_corr = -k * (W(rij) / W(dq))^n
+                        float sCorr = -k * pow(w_ij / w_dq, n);
+                        
+                        float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+
+                        deltaPos += (lambdaI + lambdaJ + sCorr) * gradW;
                     }
                 }
             }

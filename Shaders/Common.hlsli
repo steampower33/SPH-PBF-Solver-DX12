@@ -26,7 +26,11 @@ cbuffer SimParams : register(b0)
     float2 g_BoxY;
 
     float2 g_BoxZ;
-    float2 g_pad;
+    float g_dqScale = 0.2f;
+    float g_k = 0.0001f;
+
+    float g_n = 1.0f;
+    float g_pad0;
 };
 
 // [Core Logic] 3D Position -> 1D Grid Hash
