@@ -5,6 +5,7 @@
 #include "SphSolver.h"
 #include "ShaderHelper.h"
 #include "SimGui.h"
+#include "Camera.h"
 
 class FluidSimApp {
 public:
@@ -27,6 +28,7 @@ public:
 	SphSolver    m_Solver;
 	ShaderHelper m_ShaderHelper;
 	SimGui       m_Gui;
+	Camera		 m_Camera;
 
 private:
 	float m_Width = 1280.0f;

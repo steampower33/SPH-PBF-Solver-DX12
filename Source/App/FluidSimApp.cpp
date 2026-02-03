@@ -9,19 +9,6 @@ bool FluidSimApp::Run()
 	GameTimer timer;
 	timer.Reset();
 
-	SM::Vector3 eye(0.0f, 0.0f, 30.0f);
-	SM::Vector3 target(0.0f, 0.0f, 0.0f);
-	SM::Vector3 up(0.0f, 1.0f, 0.0f);
-
-	SM::Matrix view = SM::Matrix::CreateLookAt(eye, target, up);
-
-	SM::Matrix proj = SM::Matrix::CreatePerspectiveFieldOfView(
-		0.785398163f,  // 45 degrees FOV
-		m_AspectRatio,
-		0.1f,           // Near plane
-		1000.0f         // Far plane
-	);
-
 	float timeAccumulator = 0.0f;
 
 	bool bIsExit = false;
@@ -48,6 +35,12 @@ bool FluidSimApp::Run()
 		{
 			PostQuitMessage(0);
 		}
+		if (GetAsyncKeyState(VK_SPACE) & 0x0001)
+		{
+			m_Gui.m_IsPaused = !m_Gui.m_IsPaused;
+		}
+
+		m_Camera.Update(dt);
 
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
@@ -66,8 +59,8 @@ bool FluidSimApp::Run()
 		{
 			timeAccumulator = 0.0f;
 		}
-
-		m_Renderer.Render(cmdList, &m_Solver, view, proj);
+		
+		m_Renderer.Render(cmdList, &m_Solver, m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
 
 		m_Gui.BeginFrame();
 		m_Gui.DrawControlPanel(&m_Solver, &m_Renderer);
@@ -84,6 +77,46 @@ LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, message, wParam, lParam))
 		return true;
 
+	bool isImGuiHovered = false;
+	if (ImGui::GetCurrentContext() != nullptr)
+	{
+		if (ImGui::GetIO().WantCaptureMouse)
+			isImGuiHovered = true;
+	}
+
+	FluidSimApp* g_AppInstance = reinterpret_cast<FluidSimApp*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+	if (g_AppInstance)
+	{
+		if (!isImGuiHovered)
+		{
+			switch (message)
+			{
+			case WM_LBUTTONDOWN:
+			case WM_MBUTTONDOWN:
+			case WM_RBUTTONDOWN:
+				g_AppInstance->m_Camera.OnMouseDown(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+				return 0;
+
+			case WM_MOUSEWHEEL:
+				g_AppInstance->m_Camera.OnMouseWheel((float)GET_WHEEL_DELTA_WPARAM(wParam));
+				return 0;
+			}
+		}
+
+		switch (message)
+		{
+		case WM_LBUTTONUP:
+		case WM_MBUTTONUP:
+		case WM_RBUTTONUP:
+			g_AppInstance->m_Camera.OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			return 0;
+
+		case WM_MOUSEMOVE:
+			g_AppInstance->m_Camera.OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			return 0;
+		}
+	}
+
 	switch (message)
 	{
 	case WM_DESTROY:
@@ -92,6 +125,7 @@ LRESULT CALLBACK FluidSimApp::WndProc(HWND hWnd, UINT message, WPARAM wParam, LP
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
+
 	return 0;
 }
 
@@ -127,6 +161,8 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 		wr.bottom - wr.top,   // This will be larger than 720 (e.g., 759)
 		nullptr, nullptr, hInstance, nullptr);
 
+	SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)this);
+
 	RECT cr;
 	GetClientRect(hWnd, &cr);
 	m_Width = (float)(cr.right - cr.left);   // Should be EXACTLY 1280.0f
@@ -153,6 +189,8 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	);
 
 	m_GraphicsCore.EndFrame();
+
+	m_Camera.Initialize(m_AspectRatio);
 }
 
 std::wstring FluidSimApp::GetLatestWinPixGpuCapturerPath()

@@ -17,6 +17,7 @@
 #include <random>
 #include <shlobj.h>
 #include <strsafe.h>
+#include "windowsx.h"
 
 // DirectX 12 Core
 #include <d3d12.h>

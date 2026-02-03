@@ -69,6 +69,9 @@
     <ClCompile Include="External\ImGui\imgui_widgets.cpp">
       <Filter>External\ImGui</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Core\Camera.cpp">
+      <Filter>Source\Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Core\pch.h">
@@ -127,6 +130,9 @@
     </ClInclude>
     <ClInclude Include="External\ImGui\imstb_truetype.h">
       <Filter>External\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\Camera.h">
+      <Filter>Source\Core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

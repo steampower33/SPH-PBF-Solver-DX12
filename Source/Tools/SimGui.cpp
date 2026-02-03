@@ -37,7 +37,7 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
 	if (ImGui::BeginTable(label, 2,
 		ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_BordersInnerV))
 	{
-		row("Pause", [&] { ImGui::Checkbox("##Pause", &m_IsPaused); });
+		row("Pause(Space)", [&] { ImGui::Checkbox("##Pause", &m_IsPaused); });
 		int currentSimFPS = (simParams.DeltaTime > 0.0f) ? (int)(1.0f / simParams.DeltaTime) : 0;
 		row("Target Sim FPS", [&] { if (ImGui::DragInt("##Target Sim FPS", &currentSimFPS, 1, 30, 240))
 		{

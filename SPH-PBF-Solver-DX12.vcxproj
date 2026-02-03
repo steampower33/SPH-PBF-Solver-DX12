@@ -28,6 +28,7 @@
     <ClCompile Include="External\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="Source\App\Main.cpp" />
     <ClCompile Include="Source\App\FluidSimApp.cpp" />
+    <ClCompile Include="Source\Core\Camera.cpp" />
     <ClCompile Include="Source\Core\GraphicsCore.cpp" />
     <ClCompile Include="Source\Core\pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -50,6 +51,7 @@
     <ClInclude Include="External\ImGui\imstb_textedit.h" />
     <ClInclude Include="External\ImGui\imstb_truetype.h" />
     <ClInclude Include="Source\App\FluidSimApp.h" />
+    <ClInclude Include="Source\Core\Camera.h" />
     <ClInclude Include="Source\Core\d3dx12.h" />
     <ClInclude Include="Source\Core\GameTimer.h" />
     <ClInclude Include="Source\Core\GraphicsCore.h" />
