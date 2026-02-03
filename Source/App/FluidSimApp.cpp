@@ -55,7 +55,7 @@ bool FluidSimApp::Run()
 		m_Renderer.Render(cmdList, &m_Solver, view, proj);
 
 		m_Gui.BeginFrame();
-		m_Gui.DrawControlPanel(&m_Solver);
+		m_Gui.DrawControlPanel(&m_Solver, &m_Renderer);
 		m_Gui.EndFrame(cmdList);
 
 		m_GraphicsCore.EndFrame();

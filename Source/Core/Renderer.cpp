@@ -9,17 +9,10 @@ void Renderer::Render(ID3D12GraphicsCommandList* cmdList, const SphSolver* solve
     ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
     cmdList->SetDescriptorHeaps(1, heaps);
 
-    struct Params {
-        SM::Matrix View;
-        SM::Matrix Proj;
-        float Radius;
-    } params;
+    m_Params.View = view.Transpose();
+    m_Params.Proj = proj.Transpose();
 
-    params.View = view.Transpose();
-    params.Proj = proj.Transpose();
-    params.Radius = solver->m_SimParams.CellSize * 0.5f;
-
-    cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &params, 0);
+    cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &m_Params, 0);
 
     cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
 

@@ -31,10 +31,12 @@ public:
 		UINT NumParticles;
 		float CellSize = 0.1f;
 		UINT GridDim = 128;
+
 		float Mass = 5.0f;
 		float RestDensity = 1000.0f;
 		float Viscosity = 0.0001f;
-		float p0;
+		float GravityY = -9.81f;
+		
 		SM::Vector4 Box = {-20.0f, 20.0f, -10.0f, 10.0f};
 	} m_SimParams;
 	

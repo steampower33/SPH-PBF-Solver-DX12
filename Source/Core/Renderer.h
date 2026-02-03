@@ -19,6 +19,11 @@ public:
 
     void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper);
 
+    struct Params {
+        SM::Matrix View;
+        SM::Matrix Proj;
+        float VisualRadius = 0.05f;
+    } m_Params;
 private:
     ID3D12Device* m_pDevice = nullptr;
 

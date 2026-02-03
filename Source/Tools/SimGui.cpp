@@ -1,8 +1,35 @@
 #include "SphSolver.h"
+#include "Renderer.h"
 
 #include "SimGui.h"
 
 static SimGui* g_SimGuiInstance = nullptr;
+
+void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
+{
+    ImGui::Begin("Simulation Control");
+
+    auto& simParams = solver->m_SimParams;
+    auto& renderParams = renderer->m_Params;
+
+    ImGui::Text("Application Average %.3f ms/frame (%.1f FPS)",
+        1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    ImGui::Separator();
+
+    ImGui::Text("NumParticles : %d", simParams.NumParticles);
+    ImGui::SliderInt("Iterations", &solver->m_SolverIterations, 1, 10);
+
+    ImGui::DragFloat("CellSize", &simParams.CellSize, 0.1f, 0.1f, 1.0f);
+    ImGui::DragFloat("Particle Mass", &simParams.Mass, 0.1f, 0.1f, 1000.0f);
+    ImGui::DragFloat("Rest Density", &simParams.RestDensity, 1.0f, 1.0f, 1000.0f);
+    ImGui::DragFloat("Viscosity", &simParams.Viscosity, 0.0001f, 0.0f, 1.0f, "%.4f");
+    ImGui::DragFloat("GravityY", &simParams.GravityY, 0.01f, -10.0f, 10.0f, "%.2f");
+    ImGui::DragFloat4("Box", &simParams.Box.x, 0.01f, -30.0f, 30.0f);
+    ImGui::DragFloat("VisualRadius", &renderParams.VisualRadius, 0.001f, 0.01f, 1.0f, "%.3f");
+
+    ImGui::End();
+}
 
 void SimGui::Initialize(ID3D12Device* device, HWND hwnd, int frameCount, ID3D12CommandQueue* commandQueue)
 {
@@ -72,26 +99,4 @@ void SimGui::EndFrame(ID3D12GraphicsCommandList* cmdList)
     cmdList->SetDescriptorHeaps(1, heaps);
 
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmdList);
-}
-
-void SimGui::DrawControlPanel(SphSolver* solver)
-{
-    ImGui::Begin("Simulation Control");
-
-    auto& simParams = solver->m_SimParams;
-
-    ImGui::Text("Application Average %.3f ms/frame (%.1f FPS)",
-        1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-
-    ImGui::Separator();
-
-    ImGui::Text("NumParticles : %d", simParams.NumParticles);
-    ImGui::DragFloat("CellSize", &simParams.CellSize, 0.1f, 0.1f, 1.0f);
-    ImGui::DragFloat("Particle Mass", &simParams.Mass, 0.1f, 0.1f, 1000.0f);
-    ImGui::DragFloat("Rest Density", &simParams.RestDensity, 1.0f, 1.0f, 1000.0f);
-    ImGui::DragFloat("Viscosity", &simParams.Viscosity, 0.0001f, 0.0f, 1.0f, "%.4f");
-    ImGui::SliderInt("Iterations", &solver->m_SolverIterations, 1, 10);
-    ImGui::DragFloat4("Box", &simParams.Box.x, 0.01f, -30.0f, 30.0f);
-
-    ImGui::End();
 }

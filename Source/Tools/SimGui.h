@@ -1,6 +1,7 @@
 #pragma once
 
 class SphSolver;
+class Renderer;
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -58,7 +59,7 @@ public:
 
     void BeginFrame();
     void EndFrame(ID3D12GraphicsCommandList* cmdList);
-    void DrawControlPanel(SphSolver* solver);
+    void DrawControlPanel(SphSolver* solver, Renderer* renderer);
 
 private:
     ComPtr<ID3D12DescriptorHeap>   m_SrvHeap;

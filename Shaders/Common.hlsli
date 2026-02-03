@@ -14,13 +14,14 @@ cbuffer SimParams : register(b0)
 {
     float g_DeltaTime;
     uint g_NumParticles;
-    // Grid Setup
-    float g_CellSize; // e.g., 2.0 * ParticleRadius
-    uint g_GridDim; // Grid Dimensions (e.g., 128x128x128)
+    float g_CellSize;
+    uint g_GridDim;
+    
     float g_Mass;
     float g_RestDensity;
     float g_Viscosity;
-    float p0;
+    float g_GravityY;
+
     float4 g_Box;
 };
 
