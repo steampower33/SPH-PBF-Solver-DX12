@@ -32,7 +32,6 @@ private:
 	float m_Width = 1280.0f;
 	float m_Height = 720.0f;
 	float m_AspectRatio = 0.0f;
-	float m_ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f, };
 
 	static std::wstring GetLatestWinPixGpuCapturerPath();
 };

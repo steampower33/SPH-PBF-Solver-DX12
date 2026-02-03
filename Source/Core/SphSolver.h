@@ -17,7 +17,7 @@ class SphSolver
 public:
 	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper);
 
-	void Update(ID3D12GraphicsCommandList* cmdList, float dt);
+	void Update(ID3D12GraphicsCommandList* cmdList);
 
 	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
 
@@ -27,7 +27,7 @@ public:
 
 	struct SimParams
 	{
-		float DeltaTime;
+		float DeltaTime = 1.0f / 144.0f;
 		UINT NumParticles;
 		float CellSize = 0.1f;
 		UINT GridDim = 128;

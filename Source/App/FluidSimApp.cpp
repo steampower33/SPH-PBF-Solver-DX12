@@ -22,11 +22,17 @@ bool FluidSimApp::Run()
 		1000.0f         // Far plane
 	);
 
+	float timeAccumulator = 0.0f;
+
 	bool bIsExit = false;
 
 	while (bIsExit == false)
 	{
 		timer.Tick();
+
+		float dt = timer.GetDeltaTime();
+		timeAccumulator += dt;
+		if (timeAccumulator > 0.1f) timeAccumulator = 0.1f;
 
 		MSG msg;
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -37,9 +43,6 @@ bool FluidSimApp::Run()
 		}
 		if (bIsExit) break;
 
-		float dt = timer.GetDeltaTime();
-		float totalTime = timer.GetTotalTime();
-
 		// --- Update ---
 		if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
 		{
@@ -49,8 +52,20 @@ bool FluidSimApp::Run()
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-		float simDt = 1.0f / 144.0f;
-		m_Solver.Update(cmdList, simDt);
+		float simDt = m_Solver.m_SimParams.DeltaTime;
+
+		if (!m_Gui.m_IsPaused)
+		{
+			while (timeAccumulator >= simDt)
+			{
+				m_Solver.Update(cmdList);
+				timeAccumulator -= simDt;
+			}
+		}
+		else
+		{
+			timeAccumulator = 0.0f;
+		}
 
 		m_Renderer.Render(cmdList, &m_Solver, view, proj);
 
@@ -118,6 +133,8 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	m_Height = (float)(cr.bottom - cr.top);  // Should be EXACTLY 720.0f
 	m_AspectRatio = m_Width / m_Height;      // Calculate Aspect Ratio
 
+	m_Solver.m_SimParams.DeltaTime = 1.0f / 144.0f;
+
 	m_GraphicsCore.Initialize(hWnd, m_Width, m_Height);
 	m_ShaderHelper.Initialize();
 
@@ -130,7 +147,9 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 		m_GraphicsCore.GetDevice(),
 		hWnd,
 		GraphicsCore::FrameCount,
-		m_GraphicsCore.GetCommandQueue()
+		m_GraphicsCore.GetCommandQueue(),
+		m_Width,
+		m_Height
 	);
 
 	m_GraphicsCore.EndFrame();

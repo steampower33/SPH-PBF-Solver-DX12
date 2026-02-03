@@ -46,8 +46,7 @@ ID3D12GraphicsCommandList* GraphicsCore::BeginFrame()
 	m_CommandList->RSSetViewports(1, &viewport);
 	m_CommandList->RSSetScissorRects(1, &scissorRect);
 
-	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
-	m_CommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	m_CommandList->ClearRenderTargetView(rtvHandle, m_ClearColor, 0, nullptr);
 	m_CommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	return m_CommandList.Get();

@@ -27,6 +27,8 @@ private:
 	float m_Width = 0;
 	float m_Height = 0;
 
+	float m_ClearColor[4] = { 0.0f, 0.0f, 0.0f, 1.0f, };
+
 	// Core Components
 	ComPtr<ID3D12Device> m_Device;
 	ComPtr<ID3D12CommandQueue> m_CommandQueue;

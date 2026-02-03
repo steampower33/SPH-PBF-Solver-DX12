@@ -2,7 +2,7 @@
 
 #include "SphSolver.h"
 
-void SphSolver::Update(ID3D12GraphicsCommandList* cmdList, float dt)
+void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 {
 	auto barrierToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
 		m_ParticleBuffer.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -13,8 +13,6 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList, float dt)
 
 	ID3D12DescriptorHeap* heaps[] = { m_UavHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, heaps);
-
-	m_SimParams.DeltaTime = dt;
 
 	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
 

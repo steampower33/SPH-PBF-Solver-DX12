@@ -54,14 +54,20 @@ struct ExampleDescriptorHeapAllocator
 class SimGui
 {
 public:
-    void Initialize(ID3D12Device* device, HWND hwnd, int frameCount, ID3D12CommandQueue* commandQueue);
+    void Initialize(ID3D12Device* device, HWND hwnd, int frameCount, ID3D12CommandQueue* commandQueue, float width, float height);
     void Shutdown();
 
     void BeginFrame();
     void EndFrame(ID3D12GraphicsCommandList* cmdList);
     void DrawControlPanel(SphSolver* solver, Renderer* renderer);
 
+    bool m_IsPaused = false;
 private:
     ComPtr<ID3D12DescriptorHeap>   m_SrvHeap;
     ExampleDescriptorHeapAllocator m_SrvAlloc;
+    
+    void SetStyle();
+
+    float m_Width = 0.0f;
+    float m_Height = 0.0f;
 };
