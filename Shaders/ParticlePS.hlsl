@@ -6,6 +6,34 @@ struct VSOutput
     float Density : TEXCOORD2;
 };
 
+float3 GetHeatmapColor(float value)
+{
+    float3 colorLow = float3(0.0f, 0.0f, 1.0f);
+    float3 colorMid = float3(0.0f, 1.0f, 0.0f);
+    float3 colorHigh = float3(1.0f, 0.0f, 0.0f);
+
+    // if value : 0~1 
+    // 0.0 ~ 0.5 : Low -> Mid
+    // 0.5 ~ 1.0 : Mid -> High
+
+    float3 finalColor;
+
+    if (value < 0.5f)
+    {
+        // 0~0.5 -> 0 ~ 1
+        float t = value * 2.0f;
+        finalColor = lerp(colorLow, colorMid, t);
+    }
+    else
+    {
+        // 0.5~1.0 -> 0~1 
+        float t = (value - 0.5f) * 2.0f;
+        finalColor = lerp(colorMid, colorHigh, t);
+    }
+
+    return finalColor;
+}
+
 float4 main(VSOutput input) : SV_Target
 {
     // Convert UV [0, 1] to signed normalized coordinates [-1, 1]
@@ -32,10 +60,7 @@ float4 main(VSOutput input) : SV_Target
 
     float t = saturate((input.Density - rho0) / rho0);
 
-    float3 colorBlue = float3(0.0f, 0.2f, 1.0f);
-    float3 colorRed = float3(1.0f, 0.1f, 0.1f);
-
-    float3 finalColor = lerp(colorBlue, colorRed, t);
+    float3 finalColor = GetHeatmapColor(t);
 
     return float4(finalColor * diffuse, 1.0f);
 }
