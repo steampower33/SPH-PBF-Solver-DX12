@@ -74,11 +74,13 @@ void Camera::UpdateViewMatrix()
 	m_EyePos = m_Target + offset;
 }
 
+// RH
 SM::Matrix Camera::GetViewMatrix() const
 {
 	return SM::Matrix::CreateLookAt(m_EyePos, m_Target, m_Up);
 }
 
+// RH
 SM::Matrix Camera::GetProjectionMatrix() const
 {
 	return SM::Matrix::CreatePerspectiveFieldOfView(m_FovY, m_AspectRatio, m_NearZ, m_FarZ);

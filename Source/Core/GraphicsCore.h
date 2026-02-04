@@ -19,6 +19,7 @@ public:
 	ID3D12Device* GetDevice() const { return m_Device.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return m_CommandQueue.Get(); }
 	ID3D12GraphicsCommandList* GetCommandList() const { return m_CommandList.Get(); }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const { return m_DsvHeap->GetCPUDescriptorHandleForHeapStart(); }
 
 	static constexpr UINT FrameCount = 3;
 private:

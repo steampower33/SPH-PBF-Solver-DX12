@@ -73,14 +73,14 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
 
     // [Group 3] Stability
     DrawPropertyGrid("Solver Stability", [&]() {
-        Row("CFM Epsilon", [&] { ImGui::DragFloat("##Epsilon", &simParams.epsilon, 10.0f, 0.0f, 1000000.0f, "%.0f"); });
+        Row("CFM Epsilon", [&] { ImGui::DragFloat("##Epsilon", &simParams.Epsilon, 10.0f, 0.0f, 1000000.0f, "%.0f"); });
 
         // Tensile Instability
-        Row("Tensile K", [&] { ImGui::DragFloat("##TK", &simParams.k, 1e-7f, 0.0f, 1.0f, "%.7f"); });
-        Row("Tensile N", [&] { ImGui::DragFloat("##TN", &simParams.n, 0.1f, 1.0f, 10.0f, "%.1f"); });
-        Row("Tensile dQ", [&] { ImGui::DragFloat("##TdQ", &simParams.dqScale, 0.01f, 0.0f, 1.0f); });
+        Row("Tensile K", [&] { ImGui::DragFloat("##TK", &simParams.K, 1e-7f, 0.0f, 1.0f, "%.7f"); });
+        Row("Tensile N", [&] { ImGui::DragFloat("##TN", &simParams.N, 0.1f, 1.0f, 10.0f, "%.1f"); });
+        Row("Tensile dQ", [&] { ImGui::DragFloat("##TdQ", &simParams.DqScale, 0.01f, 0.0f, 1.0f); });
 
-        Row("VorticityEpsilon", [&] { ImGui::DragFloat("##VorticityEpsilon", &simParams.vorticityEpsilon, 1e-6f, 1e-6f, 1.0f, "%.6f"); });
+        Row("VorticityEpsilon", [&] { ImGui::DragFloat("##VorticityEpsilon", &simParams.VorticityEpsilon, 1e-6f, 1e-6f, 1.0f, "%.6f"); });
         });
 
     // [Group 4] Boundary & World
@@ -121,6 +121,7 @@ void SimGui::Initialize(ID3D12Device* device, HWND hwnd, int frameCount, ID3D12C
 		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
 		ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_SrvHeap)));
+        Helpers::SetDebugName(m_SrvHeap.Get(), "Heap_Srv_IMGUI");
 	}
 
 	m_SrvAlloc.Create(device, m_SrvHeap.Get());

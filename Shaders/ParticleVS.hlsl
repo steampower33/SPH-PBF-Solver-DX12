@@ -2,7 +2,7 @@ cbuffer Params : register(b0)
 {
     matrix g_View;
     matrix g_Proj;
-    float g_Radius;
+    float g_VisualRadius;
 };
 
 struct Particle
@@ -41,7 +41,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     float4 viewPos4 = mul(float4(particleWorldPos, 1.0f), g_View);
     float3 centerViewPos = viewPos4.xyz;
 
-    float2 offset = input.Pos.xy * (g_Radius * 2.0f);
+    float2 offset = input.Pos.xy * (g_VisualRadius * 2.0f);
 
     float3 finalViewPos = centerViewPos;
     finalViewPos.xy += offset;

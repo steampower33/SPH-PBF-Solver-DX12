@@ -8,11 +8,11 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000)
 	{
-		m_SimParams.externalAccel = -pushStrength;
+		m_SimParams.ExternalAccel = -pushStrength;
 	}
 	else if (GetAsyncKeyState(VK_DOWN) & 0x8000)
 	{
-		m_SimParams.externalAccel = 0.0f;
+		m_SimParams.ExternalAccel = 0.0f;
 	}
 
 	auto barrierToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -111,6 +111,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 		m_UploadBuffer,
 		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 	);
+	Helpers::SetDebugName(m_ParticleBuffer.Get(), "m_ParticleBuffer");
 
 	UINT gridDim = m_SimParams.GridDim;
 	UINT numGridCells = gridDim * gridDim * gridDim;
@@ -118,24 +119,28 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 
 	m_GridIndicesBuffer = Helpers::CreateDefaultBuffer(
 		device, cmdList, nullptr, gridBufferSize, m_GridIndicesUpload,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS // Critical: UAV
+		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
 	);
+	Helpers::SetDebugName(m_GridIndicesBuffer.Get(), "m_GridIndicesBuffer");
 
 	UINT64 floatBufferSize = m_NumParticles * sizeof(float);
 
 	m_DensityBuffer = Helpers::CreateDefaultBuffer(
 		device, cmdList, nullptr, floatBufferSize, m_DensityUpload,
 		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	Helpers::SetDebugName(m_DensityBuffer.Get(), "m_DensityBuffer");
 
 	m_LambdaBuffer = Helpers::CreateDefaultBuffer(
 		device, cmdList, nullptr, floatBufferSize, m_LambdaUpload,
 		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	Helpers::SetDebugName(m_LambdaBuffer.Get(), "m_LambdaBuffer");
 
 	UINT64 float3BufferSize = m_NumParticles * sizeof(float) * 3;
 
 	m_VorticityBuffer = Helpers::CreateDefaultBuffer(
 		device, cmdList, nullptr, float3BufferSize, m_VorticityUpload,
 		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+	Helpers::SetDebugName(m_VorticityBuffer.Get(), "m_VorticityBuffer");
 
 	// Create SRV Heap
 	{
@@ -144,6 +149,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_SrvHeap)));
+		Helpers::SetDebugName(m_SrvHeap.Get(), "Heap_SRV_Particles");
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -235,6 +241,7 @@ void SphSolver::CreateUavHeap(ID3D12Device* device)
 	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_UavHeap)));
+	Helpers::SetDebugName(m_UavHeap.Get(), "Heap_UAV_Particles");
 }
 
 void SphSolver::CreateComputeRootSignature(ID3D12Device* device)
@@ -255,6 +262,7 @@ void SphSolver::CreateComputeRootSignature(ID3D12Device* device)
 	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
 
 	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_ComputeRootSig)));
+	Helpers::SetDebugName(m_ComputeRootSig.Get(), "m_ComputeRootSig");
 }
 
 void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelper)
@@ -266,6 +274,7 @@ void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelpe
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_IntegrationPSO)));
+	Helpers::SetDebugName(m_IntegrationPSO.Get(), "m_IntegrationPSO");
 }
 
 void SphSolver::InitParticles(std::vector<Particle>& outParticles)
@@ -326,6 +335,7 @@ void SphSolver::CreateSortRootSignature(ID3D12Device* device)
 	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
 
 	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_SortRootSig)));
+	Helpers::SetDebugName(m_SortRootSig.Get(), "m_SortRootSig");
 }
 
 void SphSolver::CreateSortPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -337,6 +347,7 @@ void SphSolver::CreateSortPSO(ID3D12Device* device, ShaderHelper* helper)
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_SortPSO)));
+	Helpers::SetDebugName(m_SortPSO.Get(), "m_SortPSO");
 }
 
 // [CORE LOOP] This runs on CPU to schedule GPU work
@@ -399,6 +410,7 @@ void SphSolver::CreateGridMapRootSignature(ID3D12Device* device)
 	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
 
 	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_GridMapRootSig)));
+	Helpers::SetDebugName(m_GridMapRootSig.Get(), "m_GridMapRootSig");
 }
 
 void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -411,6 +423,7 @@ void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
 		psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 		ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_ClearGridPSO)));
+		Helpers::SetDebugName(m_ClearGridPSO.Get(), "m_ClearGridPSO");
 	}
 
 	{
@@ -421,6 +434,7 @@ void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
 		psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 		ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_BuildGridPSO)));
+		Helpers::SetDebugName(m_BuildGridPSO.Get(), "m_BuildGridPSO");
 	}
 }
 
@@ -443,6 +457,7 @@ void SphSolver::CreatePbfSolverRootSignature(ID3D12Device* device)
 	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
 
 	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_PbfSolverRootSig)));
+	Helpers::SetDebugName(m_PbfSolverRootSig.Get(), "m_PbfSolverRootSig");
 }
 
 void SphSolver::CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -454,6 +469,7 @@ void SphSolver::CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helpe
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_DensityLambdaPSO)));
+	Helpers::SetDebugName(m_DensityLambdaPSO.Get(), "m_DensityLambdaPSO");
 }
 
 void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -465,6 +481,7 @@ void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_DeltaPosPSO)));
+	Helpers::SetDebugName(m_DeltaPosPSO.Get(), "m_DeltaPosPSO");
 }
 
 void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -476,6 +493,7 @@ void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_ConstraintPSO)));
+	Helpers::SetDebugName(m_ConstraintPSO.Get(), "m_ConstraintPSO");
 }
 
 void SphSolver::CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -487,6 +505,7 @@ void SphSolver::CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper)
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_VorticityPSO)));
+	Helpers::SetDebugName(m_VorticityPSO.Get(), "m_VorticityPSO");
 }
 
 void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper)
@@ -498,4 +517,5 @@ void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* help
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_UpdateVelocityPSO)));
+	Helpers::SetDebugName(m_UpdateVelocityPSO.Get(), "m_UpdateVelocityPSO");
 }

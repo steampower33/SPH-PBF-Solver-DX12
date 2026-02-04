@@ -156,6 +156,7 @@ void GraphicsCore::CreateDX12Core()
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
 	ThrowIfFailed(m_Device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_CommandQueue)));
+	Helpers::SetDebugName(m_CommandQueue.Get(), "CommandQueue");
 
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
 	swapChainDesc.BufferCount = FrameCount;
@@ -255,6 +256,7 @@ void GraphicsCore::CreateDescriptorHeaps()
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(m_Device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_RtvHeap)));
+	Helpers::SetDebugName(m_RtvHeap.Get(), "Heap_RTV_Global");
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_RtvHeap->GetCPUDescriptorHandleForHeapStart());
 	m_RtvDescriptorSize = m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -269,6 +271,8 @@ void GraphicsCore::CreateDescriptorHeaps()
 
 		m_Device->CreateRenderTargetView(m_RenderTargets[i].Get(), &rtvDesc, rtvHandle);
 		rtvHandle.Offset(1, m_RtvDescriptorSize);
+		
+		Helpers::SetDebugName(m_RenderTargets[i].Get(), std::string("RTV_") + std::string("0" + i));
 	}
 
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
@@ -276,6 +280,7 @@ void GraphicsCore::CreateDescriptorHeaps()
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	ThrowIfFailed(m_Device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_DsvHeap)));
+	Helpers::SetDebugName(m_DsvHeap.Get(), "Heap_DSV_Main");
 
 	m_DsvDescriptorSize = m_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
@@ -303,6 +308,7 @@ void GraphicsCore::CreateDescriptorHeaps()
 		&clearValue,
 		IID_PPV_ARGS(&m_DsBuffer)
 	));
+	Helpers::SetDebugName(m_DsBuffer.Get(), "Buffer_DSV_Main");
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -315,6 +321,7 @@ void GraphicsCore::CreateDescriptorHeaps()
 void GraphicsCore::CreateFence()
 {
 	ThrowIfFailed(m_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_Fence)));
+	Helpers::SetDebugName(m_Fence.Get(), "Fence_FrameSync");
 
 	// Create an event handle to use for frame synchronization.
 	m_FenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -331,6 +338,7 @@ void GraphicsCore::CreateCommandObjects()
 		ThrowIfFailed(m_Device->CreateCommandAllocator(
 			D3D12_COMMAND_LIST_TYPE_DIRECT,
 			IID_PPV_ARGS(&m_CommandAllocators[i])));
+		Helpers::SetDebugName(m_CommandAllocators[i].Get(), std::string("Allocator_Frame_") + std::string("0" + i));
 	}
 
 	ThrowIfFailed(m_Device->CreateCommandList(
@@ -339,6 +347,7 @@ void GraphicsCore::CreateCommandObjects()
 		m_CommandAllocators[0].Get(),
 		nullptr,
 		IID_PPV_ARGS(&m_CommandList)));
+	Helpers::SetDebugName(m_CommandList.Get(), "CmdList_MainFrame");
 
 	m_CommandList->Close();
 }

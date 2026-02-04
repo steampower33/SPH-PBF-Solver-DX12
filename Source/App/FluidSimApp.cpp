@@ -30,7 +30,7 @@ bool FluidSimApp::Run()
 		}
 		if (bIsExit) break;
 
-		// --- Update ---
+		// --- Input ---
 		if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
 		{
 			PostQuitMessage(0);
@@ -44,7 +44,9 @@ bool FluidSimApp::Run()
 			m_Solver.m_WallMove = !m_Solver.m_WallMove;
 		}
 
+		// --- Update ---
 		m_Camera.Update(dt);
+		m_Renderer.Update(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
 
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
@@ -63,12 +65,14 @@ bool FluidSimApp::Run()
 		{
 			timeAccumulator = 0.0f;
 		}
-		
-		m_Renderer.Render(cmdList, &m_Solver, m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
+
+		m_Renderer.RenderParticles(cmdList, &m_Solver);
 
 		m_Gui.BeginFrame();
 		m_Gui.DrawControlPanel(&m_Solver, &m_Renderer);
 		m_Gui.EndFrame(cmdList);
+		
+		m_Renderer.RenderFluidDepth(cmdList, &m_Solver);
 
 		m_GraphicsCore.EndFrame();
 	}
@@ -193,7 +197,7 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 
 	ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-	m_Renderer.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
+	m_Renderer.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore);
 
 	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
 	m_Gui.Initialize(
