@@ -2,8 +2,7 @@
 
 RWStructuredBuffer<Particle> g_Particles : register(u0);
 RWStructuredBuffer<uint2> g_GridIndices : register(u1);
-RWStructuredBuffer<float> g_Densities : register(u2);
-RWStructuredBuffer<float> g_Lambdas : register(u3);
+RWStructuredBuffer<float3> g_Vorticities : register(u4);
 
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
@@ -12,20 +11,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= g_NumParticles)
         return;
 
-    float3 myPos = g_Particles[id].Position;
-    float lambdaI = g_Lambdas[id];
-    float3 deltaPos = float3(0, 0, 0);
+    Particle p = g_Particles[id];
+    float3 vorticity = float3(0, 0, 0);
 
     float h = g_CellSize;
     float hSq = h * h;
-
-    float k = g_k;
-    float n = g_n;
-    float dq = g_dqScale * h;
-    float valAtDq = Poly6Kernel(dq * dq, h);
-    
-    int3 myGridPos = (int3) floor(myPos / g_CellSize);
-    myGridPos += int3(1000, 1000, 1000);
+    int3 myGridPos = (int3) floor(p.Position / h) + int3(1000, 1000, 1000);
 
     for (int z = -1; z <= 1; ++z)
     {
@@ -40,42 +31,28 @@ void main(uint3 DTid : SV_DispatchThreadID)
                 
                 uint2 cellRange = g_GridIndices[neighborHash];
                 
-                if (cellRange.x >= cellRange.y || cellRange.y > g_NumParticles)
-                    continue;
-
                 for (uint j = cellRange.x; j < cellRange.y; ++j)
                 {
                     if (id == j)
                         continue;
 
-                    float3 neighborPos = g_Particles[j].Position;
-                    float3 rVec = myPos - neighborPos;
+                    Particle pj = g_Particles[j];
+                    float3 rVec = p.Position - pj.Position;
                     float rSq = dot(rVec, rVec);
 
                     if (rSq < hSq && rSq > 1e-6f)
                     {
                         float r = sqrt(rSq);
-                        float lambdaJ = g_Lambdas[j];
-                        
+                        // Eq (15): curl = Sum( v_ij x gradW )
+                        float3 v_ij = pj.Velocity - p.Velocity;
                         float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
 
-                        float lambdaSum = (g_Lambdas[id] + g_Lambdas[j]);
-
-                        // [Tensile Instability] s_corr
-                        float wVal = Poly6Kernel(rSq, h);
-        
-                        // (W_curr / W_dq)
-                        float ratio = wVal / valAtDq;
-        
-                        // s_corr = -k * (ratio ^ n)
-                        float sCorr = -k * pow(max(ratio, 0.0), n);
-
-                        deltaPos += (lambdaSum + sCorr) * gradW;
+                        vorticity += cross(v_ij, gradW);
                     }
                 }
             }
         }
     }
-
-    g_Particles[id].Position += deltaPos / g_RestDensity;
+    
+    g_Vorticities[id] = vorticity;
 }

@@ -37,7 +37,7 @@ private:
 	// Orbit Control
 	float m_Theta = 0.0f;   // Yaw
 	float m_Phi = 0.2f;     // Pitch
-	float m_Radius = 15.0f; // Zoom
+	float m_Radius = 10.0f; // Zoom
 
 	// Mouse State
 	POINT m_LastMousePos = { 0, 0 };

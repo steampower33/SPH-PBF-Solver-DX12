@@ -57,8 +57,8 @@ float4 main(VSOutput input) : SV_Target
     float diffuse = max(dot(normal, float3(0, 0, 1)), 0.1f);
 
     float rho0 = 1000.0;
-
-    float t = saturate((input.Density - rho0) / rho0);
+    
+    float t = saturate(input.Density / (rho0 * 2.0f));
 
     float3 finalColor = GetHeatmapColor(t);
 

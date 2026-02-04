@@ -32,23 +32,31 @@ public:
 		float CellSize = 0.1f;
 		UINT GridDim = 128;
 
-		float Mass = 1.0f;
+		float Mass = 0.1f;
 		float RestDensity = 1000.0f;
-		float Viscosity = 0.0001f;
+		float Viscosity = 0.05f;
 		float GravityY = -9.81f;
 		
-		SM::Vector2 BoxX = {-5.0f, 5.0f };
-		SM::Vector2 BoxY = {0.0f, 10.0f };
+		SM::Vector2 BoxX = {-3.0f, 4.0f };
+		SM::Vector2 BoxY = {0.0f, 4.0f };
 
-		SM::Vector2 BoxZ = {-2.0f, 2.0f };
-		float dqScale = 0.2f;
-		float k = 0.0001f;
+		SM::Vector2 BoxZ = {-1.5f, 2.0f };
+		float epsilon = 5000.0f;
+		float k = 0.0f;
 
-		float n = 4.0f;
-		float pad0;
+		float n = 0.0f;
+		float dqScale = 0.0f;
+		float vorticityEpsilon = 0.00001f;
+		float externalAccel = 0.0f;
 	} m_SimParams;
 	
-	int m_Iterations = 5;
+	int m_Iterations = 4;
+
+	bool m_WallMove = false;
+	float m_TotalTime = 0.0f;
+	float m_OriginMinX = m_SimParams.BoxX.x;
+	float m_WallAmplitude = 2.0f;
+	float m_WallSpeed = 1.5f;
 
 private:
 	ComPtr<ID3D12Resource> m_ParticleBuffer;
@@ -100,6 +108,8 @@ private:
 	ComPtr<ID3D12Resource> m_DensityUpload;
 	ComPtr<ID3D12Resource> m_LambdaBuffer;
 	ComPtr<ID3D12Resource> m_LambdaUpload;
+	ComPtr<ID3D12Resource> m_VorticityBuffer;
+	ComPtr<ID3D12Resource> m_VorticityUpload;
 
 	ComPtr<ID3D12RootSignature> m_PbfSolverRootSig;
 	ComPtr<ID3D12PipelineState> m_DensityLambdaPSO;
@@ -111,9 +121,11 @@ private:
 
 private:
 	ComPtr<ID3D12PipelineState> m_ConstraintPSO;
+	ComPtr<ID3D12PipelineState> m_VorticityPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
 
 	void CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper);
+	void CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper);
 	void CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper);
 
 };

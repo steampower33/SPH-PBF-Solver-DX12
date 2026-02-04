@@ -39,6 +39,10 @@ bool FluidSimApp::Run()
 		{
 			m_Gui.m_IsPaused = !m_Gui.m_IsPaused;
 		}
+		if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
+		{
+			m_Solver.m_WallMove = !m_Solver.m_WallMove;
+		}
 
 		m_Camera.Update(dt);
 

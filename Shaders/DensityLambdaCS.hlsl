@@ -16,11 +16,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
     
     float h = g_CellSize;
     float hSq = h * h;
-    float epsilon = 100.0f;
-
-    float density = 0.0f;
+    
+    float density = g_Mass * Poly6Kernel(0.0, h);
     float3 gradCiSum = float3(0, 0, 0);
-    float sumGradCiSq = 0.0f;
+    float sumGradCiSq = 0.0;
 
     int3 myGridPos = (int3) floor(myPos / g_CellSize);
     myGridPos += int3(1000, 1000, 1000);
@@ -50,7 +49,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     float3 rVec = myPos - neighborPos;
                     float rSq = dot(rVec, rVec);
 
-                    if (rSq < hSq && rSq > 1e-6f)
+                    if (rSq < hSq && rSq > 1e-6)
                     {
                         density += Poly6Kernel(rSq, h) * g_Mass;
 
@@ -73,12 +72,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     sumGradCiSq += dot(gradCiSum, gradCiSum);
 
-    float C = max(density / g_RestDensity - 1.0f, 0.0f);
+    float C = max(density / g_RestDensity - 1.0, 0.0);
     
-    float lambda = 0.0f;
-    if (C != 0.0f)
+    float lambda = 0.0;
+    if (C != 0.0)
     {
-        lambda = -C / (sumGradCiSq + epsilon);
+        lambda = -C / (sumGradCiSq + g_epsilon);
     }
 
     g_Densities[id] = density;

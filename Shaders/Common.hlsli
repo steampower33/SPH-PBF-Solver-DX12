@@ -26,11 +26,13 @@ cbuffer SimParams : register(b0)
     float2 g_BoxY;
 
     float2 g_BoxZ;
-    float g_dqScale = 0.2f;
-    float g_k = 0.0001f;
+    float g_epsilon;
+    float g_k;
 
-    float g_n = 1.0f;
-    float g_pad0;
+    float g_n;
+    float g_dqScale;
+    float g_vorticityEpsilon;
+    float g_externalAccel;
 };
 
 // [Core Logic] 3D Position -> 1D Grid Hash
@@ -91,7 +93,9 @@ float SpikyKernelGrad(float r, float h)
     }
     return 0.0f;
 }
-#else
+#endif
+
+#ifdef DIMENSION_2D
 // -----------------------------------------------------------------------------
 // [2D Version] Poly6 Kernel
 // -----------------------------------------------------------------------------

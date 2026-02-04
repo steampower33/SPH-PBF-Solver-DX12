@@ -14,7 +14,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float3 minBox = float3(g_BoxX.x, g_BoxY.x, g_BoxZ.x);
     float3 maxBox = float3(g_BoxX.y, g_BoxY.y, g_BoxZ.y);
     
-    float epsilon = 0.001f;
+    float epsilon = g_CellSize;
     p.Position = max(p.Position, minBox + epsilon);
     p.Position = min(p.Position, maxBox - epsilon);
 
