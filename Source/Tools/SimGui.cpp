@@ -76,11 +76,11 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
         Row("CFM Epsilon", [&] { ImGui::DragFloat("##Epsilon", &simParams.epsilon, 10.0f, 0.0f, 1000000.0f, "%.0f"); });
 
         // Tensile Instability
-        Row("Tensile K", [&] { ImGui::DragFloat("##TK", &simParams.k, 0.00001f, 0.0f, 1.0f, "%.5f"); });
+        Row("Tensile K", [&] { ImGui::DragFloat("##TK", &simParams.k, 1e-7f, 0.0f, 1.0f, "%.7f"); });
         Row("Tensile N", [&] { ImGui::DragFloat("##TN", &simParams.n, 0.1f, 1.0f, 10.0f, "%.1f"); });
         Row("Tensile dQ", [&] { ImGui::DragFloat("##TdQ", &simParams.dqScale, 0.01f, 0.0f, 1.0f); });
 
-        Row("VorticityEpsilon", [&] { ImGui::DragFloat("##VorticityEpsilon", &simParams.vorticityEpsilon, 1e-5f, 1e-5f, 1.0f, "%.5f"); });
+        Row("VorticityEpsilon", [&] { ImGui::DragFloat("##VorticityEpsilon", &simParams.vorticityEpsilon, 1e-6f, 1e-6f, 1.0f, "%.6f"); });
         });
 
     // [Group 4] Boundary & World

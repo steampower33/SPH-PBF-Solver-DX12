@@ -40,13 +40,13 @@ public:
 		SM::Vector2 BoxX = {-3.0f, 4.0f };
 		SM::Vector2 BoxY = {0.0f, 4.0f };
 
-		SM::Vector2 BoxZ = {-1.5f, 2.0f };
+		SM::Vector2 BoxZ = {-2.0f, 2.0f };
 		float epsilon = 5000.0f;
-		float k = 0.0f;
+		float k = 0.0000050f;
 
-		float n = 0.0f;
-		float dqScale = 0.0f;
-		float vorticityEpsilon = 0.00001f;
+		float n = 8.0f;
+		float dqScale = 0.2f;
+		float vorticityEpsilon = 0.000005f;
 		float externalAccel = 0.0f;
 	} m_SimParams;
 	
@@ -55,8 +55,8 @@ public:
 	bool m_WallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = m_SimParams.BoxX.x;
+	float m_WallSpeed = 2.0f;
 	float m_WallAmplitude = 2.0f;
-	float m_WallSpeed = 1.5f;
 
 private:
 	ComPtr<ID3D12Resource> m_ParticleBuffer;
