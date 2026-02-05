@@ -20,6 +20,14 @@ public:
 	ID3D12CommandQueue* GetCommandQueue() const { return m_CommandQueue.Get(); }
 	ID3D12GraphicsCommandList* GetCommandList() const { return m_CommandList.Get(); }
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const { return m_DsvHeap->GetCPUDescriptorHandleForHeapStart(); }
+	D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentBackBufferRTV() const
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_RtvHeap->GetCPUDescriptorHandleForHeapStart());
+
+		rtvHandle.Offset(m_FrameIndex, m_RtvDescriptorSize);
+
+		return rtvHandle;
+	}
 
 	static constexpr UINT FrameCount = 3;
 private:

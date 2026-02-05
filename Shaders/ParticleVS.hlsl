@@ -3,6 +3,7 @@ cbuffer Params : register(b0)
     matrix g_View;
     matrix g_Proj;
     float g_VisualRadius;
+    float g_ThicknessContribution;
 };
 
 struct Particle
@@ -38,15 +39,15 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     Particle p = g_Particles[instanceID];
     float3 particleWorldPos = p.Position;
 
-    float4 viewPos4 = mul(float4(particleWorldPos, 1.0f), g_View);
+    float4 viewPos4 = mul(float4(particleWorldPos, 1.0), g_View);
     float3 centerViewPos = viewPos4.xyz;
 
-    float2 offset = input.Pos.xy * (g_VisualRadius * 2.0f);
+    float2 offset = input.Pos.xy * (g_VisualRadius * 2.0);
 
     float3 finalViewPos = centerViewPos;
     finalViewPos.xy += offset;
 
-    output.PosH = mul(float4(finalViewPos, 1.0f), g_Proj);
+    output.PosH = mul(float4(finalViewPos, 1.0), g_Proj);
     output.UV = input.UV;
     output.ViewPos = finalViewPos;
     output.Density = p.Density;

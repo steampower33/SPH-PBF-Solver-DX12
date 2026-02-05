@@ -103,6 +103,11 @@ void SimGui::DrawControlPanel(SphSolver* solver, Renderer* renderer)
     // [Group 5] Visualization
     DrawPropertyGrid("Visualization", [&]() {
         Row("Particle Radius", [&] { ImGui::DragFloat("##VisRad", &renderParams.VisualRadius, 0.001f, 0.01f, 0.5f); });
+        Row("Blur Radius", [&] { ImGui::DragFloat("##BlurRadius", &renderer->m_BlurParams.Radius, 0.1f, 0.0f, 50.0f); });
+        Row("Sigma Spatial", [&] { ImGui::DragFloat("##SigmaSpatial", &renderer->m_BlurParams.SigmaSpatial, 0.1f, 0.0f, 50.0f); });
+        Row("Sigma Range", [&] { ImGui::DragFloat("##SigmaRange", &renderer->m_BlurParams.SigmaRange, 0.1f, 0.0f, 50.0f); });
+        Row("LightDir", [&] { ImGui::DragFloat3("##LightDir", &renderer->m_CompositeParams.LightDir.x, 0.1f, 0.0f, 1.0f); renderer->m_CompositeParams.LightDir.Normalize(); });
+
         });
 
     ImGui::End();

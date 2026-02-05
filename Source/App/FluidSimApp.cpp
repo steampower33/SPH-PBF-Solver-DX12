@@ -66,13 +66,16 @@ bool FluidSimApp::Run()
 			timeAccumulator = 0.0f;
 		}
 
-		m_Renderer.RenderParticles(cmdList, &m_Solver);
+		//m_Renderer.RenderParticles(cmdList, &m_Solver);
+
+		m_Renderer.RenderFluidDepth(cmdList, &m_Solver);
+		m_Renderer.RenderFluidSmooth(cmdList);
+		m_Renderer.RenderFluidThickness(cmdList, &m_Solver);
+		m_Renderer.RenderFluidComposite(cmdList);
 
 		m_Gui.BeginFrame();
 		m_Gui.DrawControlPanel(&m_Solver, &m_Renderer);
 		m_Gui.EndFrame(cmdList);
-		
-		m_Renderer.RenderFluidDepth(cmdList, &m_Solver);
 
 		m_GraphicsCore.EndFrame();
 	}

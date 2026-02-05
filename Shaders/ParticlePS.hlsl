@@ -53,7 +53,7 @@ float4 main(VSOutput input) : SV_Target
     float fresnel = pow(1.0 - max(dot(normal, float3(0, 0, 1)), 0.0), 3.0);
     fresnel *= 0.5;
 
-    float t = input.Density / 2000.0f;
+    float t = input.Density / 2000.0;
 
     float3 baseColor = GetSmoothHeatmap(t);
 

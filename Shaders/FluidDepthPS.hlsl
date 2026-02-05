@@ -22,6 +22,7 @@ float main(VSOutput input) : SV_Target
 
     float z = sqrt(1.0 - distSq);
 
+    // Simple Math -> Right Handed View, Proj 
     float linearDepth = -input.ViewPos.z - (z * g_VisualRadius);
 
     return linearDepth;

@@ -53,7 +53,7 @@ uint GetGridHash(float3 pos)
 }
 
 #define DIMENSION_3D
-#define PI 3.14159265359f
+#define PI 3.14159265359
 
 #ifdef DIMENSION_3D
 // -----------------------------------------------------------------------------

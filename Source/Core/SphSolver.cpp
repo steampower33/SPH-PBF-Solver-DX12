@@ -92,6 +92,11 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 
 	cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
 	cmdList->Dispatch(groups, 1, 1);
+
+	auto barrierToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+		m_ParticleBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		D3D12_RESOURCE_STATE_GENERIC_READ);
+	cmdList->ResourceBarrier(1, &barrierToSRV);
 }
 
 void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper)
