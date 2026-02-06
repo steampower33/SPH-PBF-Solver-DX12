@@ -8,12 +8,12 @@ void ShaderHelper::Initialize()
 }
 
 ComPtr<IDxcBlob> ShaderHelper::Compile(
+    const std::wstring& shaderBaseName,
     const std::wstring& filename,
     const std::wstring& entryPoint,
     const std::wstring& targetProfile)
 {
     // Construct full path
-    std::wstring shaderBaseName = L"./Shaders/";
     std::wstring fullPath = shaderBaseName + filename;
 
     // Load file
@@ -37,7 +37,7 @@ ComPtr<IDxcBlob> ShaderHelper::Compile(
     args.push_back(L"-T"); args.push_back(targetProfile.c_str());
 
     // Include path
-    std::wstring includePath = std::filesystem::absolute(L"./Shaders").wstring();
+    std::wstring includePath = std::filesystem::absolute(shaderBaseName).wstring();
     args.push_back(L"-I"); args.push_back(includePath.c_str());
 
 #if defined(_DEBUG)

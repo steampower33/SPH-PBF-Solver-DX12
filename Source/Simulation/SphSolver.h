@@ -54,6 +54,8 @@ public:
 	void ToggleWallMovement() { m_WallMove = !m_WallMove; }
 
 private:
+	std::wstring m_ShaderBaseName = L"./Shaders/Simulation/";
+
 	// Core Resources
 	SimParams m_SimParams;
 
@@ -69,7 +71,7 @@ private:
 	bool m_WallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
-	float m_WallSpeed = 2.0f;
+	float m_WallSpeed = 2.5f;
 	float m_WallAmplitude = 2.0f;
 	int m_Iterations = 4;
 

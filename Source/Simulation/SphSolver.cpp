@@ -220,7 +220,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	{
 		m_SimParams.NumParticles = m_NumParticles;
 		m_SimParams.DeltaTime = 1.0f / 144.0f;
-		
+
 		m_OriginMinX = m_SimParams.BoxX.x;
 	}
 
@@ -275,7 +275,8 @@ void SphSolver::CreateComputeRootSignature(ID3D12Device* device)
 
 void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelper)
 {
-	ComPtr<IDxcBlob> csBlob = shaderHelper->Compile(L"IntegrationCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = shaderHelper->Compile(
+		m_ShaderBaseName, L"IntegrationCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_ComputeRootSig.Get();
@@ -348,7 +349,7 @@ void SphSolver::CreateSortRootSignature(ID3D12Device* device)
 
 void SphSolver::CreateSortPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"BitonicSortCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"BitonicSortCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_SortRootSig.Get();
@@ -424,7 +425,7 @@ void SphSolver::CreateGridMapRootSignature(ID3D12Device* device)
 void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
 {
 	{
-		ComPtr<IDxcBlob> csBlob = helper->Compile(L"ClearGridIndicesCS.hlsl", L"main", L"cs_6_0");
+		ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"ClearGridIndicesCS.hlsl", L"main", L"cs_6_0");
 
 		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.pRootSignature = m_GridMapRootSig.Get();
@@ -435,7 +436,7 @@ void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
 	}
 
 	{
-		ComPtr<IDxcBlob> csBlob = helper->Compile(L"BuildGridIndicesCS.hlsl", L"main", L"cs_6_0");
+		ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"BuildGridIndicesCS.hlsl", L"main", L"cs_6_0");
 
 		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 		psoDesc.pRootSignature = m_GridMapRootSig.Get();
@@ -470,7 +471,7 @@ void SphSolver::CreatePbfSolverRootSignature(ID3D12Device* device)
 
 void SphSolver::CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"DensityLambdaCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"DensityLambdaCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
@@ -482,7 +483,7 @@ void SphSolver::CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helpe
 
 void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"DeltaPosCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"DeltaPosCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
@@ -494,7 +495,7 @@ void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
 
 void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"ConstraintCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"ConstraintCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
@@ -506,7 +507,7 @@ void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
 
 void SphSolver::CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"VorticityCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"VorticityCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
@@ -518,7 +519,7 @@ void SphSolver::CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper)
 
 void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(L"UpdateVelocityCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"UpdateVelocityCS.hlsl", L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
@@ -535,6 +536,10 @@ void SphSolver::OnGui()
 		// Simulation Control
 		ImGui::SeparatorText("Simulation Control");
 		int fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60;
+		float ms = (fps > 0.0f) ? (1000.0f / fps) : 0.0f;
+		ImGui::TextColored(ImVec4(0, 1, 0, 1), "%.1f FPS (%.3f ms)", fps, ms);
+		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
+		ImGui::Text("Time Step (dt): %.6f s", m_SimParams.DeltaTime);
 		if (ImGui::DragInt("Target Sim FPS", &fps, 1, 30, 240)) {
 			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, fps);
 		}

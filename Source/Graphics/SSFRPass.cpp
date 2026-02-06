@@ -283,13 +283,13 @@ void SSFRPass::CreateShaders(const RenderInitContext& ctx)
 {
     auto helper = ctx.ShaderHelper;
 
-    m_ParticleVS = helper->Compile(L"ParticleVS.hlsl", L"main", L"vs_6_0");
-    m_ParticlePS = helper->Compile(L"ParticlePS.hlsl", L"main", L"ps_6_0");
-    m_FluidDepthPS = helper->Compile(L"FluidDepthPS.hlsl", L"main", L"ps_6_0");
-    m_FullScreenQuadVS = helper->Compile(L"FullScreenQuadVS.hlsl", L"main", L"vs_6_0");
-    m_FluidSmoothPS = helper->Compile(L"FluidSmooth.hlsl", L"main", L"ps_6_0");
-    m_FluidThicknessPS = helper->Compile(L"FluidThicknessPS.hlsl", L"main", L"ps_6_0");
-    m_FluidCompositePS = helper->Compile(L"FluidComposite.hlsl", L"main", L"ps_6_0");
+    m_ParticleVS = helper->Compile(m_ShaderBaseName, L"ParticleVS.hlsl", L"main", L"vs_6_0");
+    m_ParticlePS = helper->Compile(m_ShaderBaseName, L"ParticlePS.hlsl", L"main", L"ps_6_0");
+    m_FluidDepthPS = helper->Compile(m_ShaderBaseName, L"FluidDepthPS.hlsl", L"main", L"ps_6_0");
+    m_FullScreenQuadVS = helper->Compile(m_ShaderBaseName, L"FullScreenQuadVS.hlsl", L"main", L"vs_6_0");
+    m_FluidSmoothPS = helper->Compile(m_ShaderBaseName, L"FluidSmooth.hlsl", L"main", L"ps_6_0");
+    m_FluidThicknessPS = helper->Compile(m_ShaderBaseName, L"FluidThicknessPS.hlsl", L"main", L"ps_6_0");
+    m_FluidCompositePS = helper->Compile(m_ShaderBaseName, L"FluidComposite.hlsl", L"main", L"ps_6_0");
 }
 
 void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)

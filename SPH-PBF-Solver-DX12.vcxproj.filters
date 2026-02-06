@@ -10,9 +10,6 @@
     <Filter Include="External\ImGui">
       <UniqueIdentifier>{f619c6d5-55c4-47da-97c7-8cbe07145613}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Source\Core">
-      <UniqueIdentifier>{2bc24fc8-f153-4899-ac30-10094b6a5cdb}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Source\App">
       <UniqueIdentifier>{e12333bb-b23d-452f-a9f0-f9ba944bbfc9}</UniqueIdentifier>
     </Filter>
@@ -22,28 +19,34 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{5e041577-494c-40cd-94de-591a8d282fd9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source\Engine">
+      <UniqueIdentifier>{0b8ea4d3-d9cc-485e-9f25-f39a96915178}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Graphics">
+      <UniqueIdentifier>{2bc24fc8-f153-4899-ac30-10094b6a5cdb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Simulation">
+      <UniqueIdentifier>{a62ce6e0-a945-4192-9dfa-6dda56a6e807}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Utils">
+      <UniqueIdentifier>{0bc1e85e-4dc3-481c-b609-75ee2ed81404}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source\Scene">
+      <UniqueIdentifier>{cce40c69-b80d-495b-8459-349f60a4abce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\Rendering">
+      <UniqueIdentifier>{ceb633b8-9b98-4ed3-84b7-0e70b2016b9c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Shaders\Simulation">
+      <UniqueIdentifier>{7669e4f7-e207-4d30-bdc7-2cfc9334a437}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\App\Main.cpp">
       <Filter>Source\App</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Core\pch.cpp">
-      <Filter>Source\Core</Filter>
-    </ClCompile>
     <ClCompile Include="Source\App\FluidSimApp.cpp">
       <Filter>Source\App</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\GraphicsCore.cpp">
-      <Filter>Source\Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\RendererManager.cpp">
-      <Filter>Source\Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\SphSolver.cpp">
-      <Filter>Source\Core</Filter>
-    </ClCompile>
-    <ClCompile Include="Source\Core\ShaderHelper.cpp">
-      <Filter>Source\Core</Filter>
     </ClCompile>
     <ClCompile Include="Source\Tools\SimGui.cpp">
       <Filter>Source\Tools</Filter>
@@ -69,43 +72,31 @@
     <ClCompile Include="External\ImGui\imgui_widgets.cpp">
       <Filter>External\ImGui</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Core\Camera.cpp">
-      <Filter>Source\Core</Filter>
+    <ClCompile Include="Source\Engine\GraphicsCore.cpp">
+      <Filter>Source\Engine</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Core\SSFRPass.cpp">
-      <Filter>Source\Core</Filter>
+    <ClCompile Include="Source\Engine\pch.cpp">
+      <Filter>Source\Engine</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\RendererManager.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\ShaderHelper.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\SSFRPass.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Simulation\SphSolver.cpp">
+      <Filter>Source\Simulation</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Scene\Camera.cpp">
+      <Filter>Source\Scene</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Source\Core\pch.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Helpers.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
     <ClInclude Include="Source\App\FluidSimApp.h">
       <Filter>Source\App</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\GameTimer.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\d3dx12.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\GraphicsCore.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\RendererManager.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\SphSolver.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\Vertex.h">
-      <Filter>Source\Core</Filter>
-    </ClInclude>
-    <ClInclude Include="Source\Core\ShaderHelper.h">
-      <Filter>Source\Core</Filter>
     </ClInclude>
     <ClInclude Include="Source\Tools\SimGui.h">
       <Filter>Source\Tools</Filter>
@@ -134,73 +125,100 @@
     <ClInclude Include="External\ImGui\imstb_truetype.h">
       <Filter>External\ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Core\Camera.h">
-      <Filter>Source\Core</Filter>
+    <ClInclude Include="Source\Engine\d3dx12.h">
+      <Filter>Source\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Core\IRenderPass.h">
-      <Filter>Source\Core</Filter>
+    <ClInclude Include="Source\Engine\GameTimer.h">
+      <Filter>Source\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Core\RenderContext.h">
-      <Filter>Source\Core</Filter>
+    <ClInclude Include="Source\Engine\GraphicsCore.h">
+      <Filter>Source\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Core\SSFRPass.h">
-      <Filter>Source\Core</Filter>
+    <ClInclude Include="Source\Engine\pch.h">
+      <Filter>Source\Engine</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <FxCompile Include="Shaders\ParticleVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ParticlePS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\IntegrationCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BitonicSortCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ClearGridIndicesCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\BuildGridIndicesCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\DensityLambdaCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\DeltaPosCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\UpdateVelocityCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\ConstraintCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\VorticityCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\FluidDepthPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\FluidSmooth.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\FluidComposite.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\FullScreenQuadVS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\FluidThicknessPS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
+    <ClInclude Include="Source\Graphics\IRenderPass.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\RenderContext.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\RendererManager.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\ShaderHelper.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\SSFRPass.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\Vertex.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Simulation\SphSolver.h">
+      <Filter>Source\Simulation</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Utils\Helpers.h">
+      <Filter>Source\Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Scene\Camera.h">
+      <Filter>Source\Scene</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="Shaders\Common.hlsli">
-      <Filter>Shaders</Filter>
-    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\Simulation\BitonicSortCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\BuildGridIndicesCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\ClearGridIndicesCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\ConstraintCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\DeltaPosCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\DensityLambdaCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\IntegrationCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\UpdateVelocityCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\VorticityCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\FluidComposite.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\FluidDepthPS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\FluidSmooth.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\FluidThicknessPS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\FullScreenQuadVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\ParticlePS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\ParticleVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\Common.hlsli">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

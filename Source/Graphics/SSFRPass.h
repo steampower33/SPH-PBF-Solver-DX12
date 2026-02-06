@@ -37,6 +37,8 @@ public:
     } m_CompositeParams;
 
 private:
+    std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";
+
     bool m_bDebugDrawParticles = false;
 
     UINT m_Width = 0;
