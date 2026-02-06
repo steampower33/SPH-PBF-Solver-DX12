@@ -37,6 +37,8 @@ public:
     } m_CompositeParams;
 
 private:
+    bool m_bDebugDrawParticles = false;
+
     UINT m_Width = 0;
     UINT m_Height = 0;
 
@@ -97,6 +99,7 @@ private:
     void CreateFluidResources(const RenderInitContext& ctx);
     void CreateQuadMesh(const RenderInitContext& ctx);
 
+    void RenderParticles(const RenderContext& ctx);
     void RenderFluidDepth(const RenderContext& ctx);
     void RenderFluidSmooth(const RenderContext& ctx);
     void RenderFluidThickness(const RenderContext& ctx);

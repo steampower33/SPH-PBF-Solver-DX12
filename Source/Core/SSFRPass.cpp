@@ -20,37 +20,82 @@ void SSFRPass::Initialize(const RenderInitContext& ctx)
 
 void SSFRPass::Render(const RenderContext& ctx)
 {
-	RenderFluidDepth(ctx);
-	RenderFluidSmooth(ctx);
-	RenderFluidThickness(ctx);
-	RenderFluidComposite(ctx);
+	if (m_bDebugDrawParticles)
+	{
+		RenderParticles(ctx);
+	}
+	else
+	{
+		RenderFluidDepth(ctx);
+		RenderFluidSmooth(ctx);
+		RenderFluidThickness(ctx);
+		RenderFluidComposite(ctx);
+	}
 }
 
 void SSFRPass::OnGui(RenderContext& ctx)
 {
     if (ImGui::CollapsingHeader("SSFR Visualization", ImGuiTreeNodeFlags_DefaultOpen))
     {
-        ImGui::SeparatorText("Particles");
-        ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
+		ImGui::Checkbox("Debug: Draw Particles (Heatmap)", &m_bDebugDrawParticles);
 
-        ImGui::SeparatorText("Fluid Material");
-        ImGui::DragFloat("Thickness Coeff", &ctx.Globals.ThicknessCoeff, 0.001f, 0.0f, 1.0f);
+		ImGui::Separator();
 
-        if (ImGui::DragFloat3("Light Dir", &m_CompositeParams.LightDir.x, 0.05f, -1.0f, 1.0f))
-        {
-            m_CompositeParams.LightDir.Normalize();
-        }
+		if (m_bDebugDrawParticles)
+		{
+			ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
+		}
+		else
+		{
+			ImGui::SeparatorText("Particles");
+			ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
 
-        ImGui::SeparatorText("Depth Blur");
-        ImGui::DragFloat("Blur Radius", &m_BlurParams.Radius, 0.1f, 0.0f, 50.0f);
-        ImGui::DragFloat("Sigma Spatial", &m_BlurParams.SigmaSpatial, 0.1f, 0.1f, 50.0f);
-        ImGui::DragFloat("Sigma Range", &m_BlurParams.SigmaRange, 0.01f, 0.01f, 10.0f);
+			ImGui::SeparatorText("Fluid Material");
+			ImGui::DragFloat("Thickness Coeff", &ctx.Globals.ThicknessCoeff, 0.001f, 0.0f, 1.0f);
+
+			if (ImGui::DragFloat3("Light Dir", &m_CompositeParams.LightDir.x, 0.05f, -1.0f, 1.0f))
+			{
+				m_CompositeParams.LightDir.Normalize();
+			}
+
+			ImGui::SeparatorText("Depth Blur");
+			ImGui::DragFloat("Blur Radius", &m_BlurParams.Radius, 0.1f, 0.0f, 50.0f);
+			ImGui::DragFloat("Sigma Spatial", &m_BlurParams.SigmaSpatial, 0.1f, 0.1f, 50.0f);
+			ImGui::DragFloat("Sigma Range", &m_BlurParams.SigmaRange, 0.01f, 0.01f, 10.0f);
+		}
     }
 }
 
 // =========================================================
 // Render Steps
 // =========================================================
+
+void SSFRPass::RenderParticles(const RenderContext& ctx)
+{
+	auto cmdList = ctx.CmdList;
+	auto solver = ctx.Solver;
+
+	auto dsvHandle = ctx.DSV;
+	cmdList->OMSetRenderTargets(1, &ctx.RTV, FALSE, &ctx.DSV);
+
+	cmdList->RSSetViewports(1, &ctx.Viewport);
+	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
+
+	cmdList->SetGraphicsRootSignature(m_RenderParticleRootSig.Get());
+	cmdList->SetPipelineState(m_RenderParticlePSO.Get());
+
+	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
+	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+
+	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
+	cmdList->IASetIndexBuffer(&m_QuadIBView);
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	cmdList->DrawIndexedInstanced(6, solver->GetNumParticles(), 0, 0, 0);
+}
 
 void SSFRPass::RenderFluidDepth(const RenderContext& ctx)
 {
@@ -237,7 +282,7 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 void SSFRPass::CreateShaders(const RenderInitContext& ctx)
 {
     auto helper = ctx.ShaderHelper;
-    // IDxcBlob으로 컴파일해서 멤버 변수에 저장
+
     m_ParticleVS = helper->Compile(L"ParticleVS.hlsl", L"main", L"vs_6_0");
     m_ParticlePS = helper->Compile(L"ParticlePS.hlsl", L"main", L"ps_6_0");
     m_FluidDepthPS = helper->Compile(L"FluidDepthPS.hlsl", L"main", L"ps_6_0");
@@ -323,7 +368,6 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
         psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
         psoDesc.pRootSignature = m_RenderParticleRootSig.Get();
 
-        // [수정] IDxcBlob은 포인터와 사이즈를 직접 넣어줘야 함
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_ParticlePS->GetBufferPointer(), m_ParticlePS->GetBufferSize());
 
@@ -346,7 +390,6 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
         psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
         psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
 
-        // [수정] Pointer, Size 사용
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidDepthPS->GetBufferPointer(), m_FluidDepthPS->GetBufferSize());
 
@@ -371,7 +414,6 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
         psoDesc.pRootSignature = m_FluidSmoothRootSig.Get();
 
-        // [수정] Pointer, Size 사용
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_FullScreenQuadVS->GetBufferPointer(), m_FullScreenQuadVS->GetBufferSize());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidSmoothPS->GetBufferPointer(), m_FluidSmoothPS->GetBufferSize());
 
@@ -393,7 +435,6 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
         psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
         psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
 
-        // [수정] Pointer, Size 사용
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidThicknessPS->GetBufferPointer(), m_FluidThicknessPS->GetBufferSize());
 
@@ -426,7 +467,6 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
         psoDesc.pRootSignature = m_FluidCompositeRootSig.Get();
 
-        // [수정] Pointer, Size 사용
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_FullScreenQuadVS->GetBufferPointer(), m_FullScreenQuadVS->GetBufferSize());
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidCompositePS->GetBufferPointer(), m_FluidCompositePS->GetBufferSize());
 
