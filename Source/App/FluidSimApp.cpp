@@ -41,17 +41,17 @@ bool FluidSimApp::Run()
 		}
 		if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
 		{
-			m_Solver.m_WallMove = !m_Solver.m_WallMove;
+			m_Solver.ToggleWallMovement();
 		}
 
 		// --- Update ---
 		m_Camera.Update(dt);
-		m_Renderer.Update(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
+		m_RendererManager.Update(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
 
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-		float simDt = m_Solver.m_SimParams.DeltaTime;
+		float simDt = m_Solver.GetSimParams().DeltaTime;
 
 		if (!m_Gui.m_IsPaused)
 		{
@@ -66,15 +66,10 @@ bool FluidSimApp::Run()
 			timeAccumulator = 0.0f;
 		}
 
-		//m_Renderer.RenderParticles(cmdList, &m_Solver);
-
-		m_Renderer.RenderFluidDepth(cmdList, &m_Solver);
-		m_Renderer.RenderFluidSmooth(cmdList);
-		m_Renderer.RenderFluidThickness(cmdList, &m_Solver);
-		m_Renderer.RenderFluidComposite(cmdList);
+		m_RendererManager.Render(cmdList);
 
 		m_Gui.BeginFrame();
-		m_Gui.DrawControlPanel(&m_Solver, &m_Renderer);
+		m_Gui.DrawControlPanel(&m_Solver, &m_RendererManager);
 		m_Gui.EndFrame(cmdList);
 
 		m_GraphicsCore.EndFrame();
@@ -193,16 +188,15 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	m_Height = (float)(cr.bottom - cr.top);
 	m_AspectRatio = m_Width / m_Height;
 
-	m_Solver.m_SimParams.DeltaTime = 1.0f / 144.0f;
-
 	m_GraphicsCore.Initialize(hWnd, m_Width, m_Height);
 	m_ShaderHelper.Initialize();
 
 	ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-	m_Renderer.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore);
-
 	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
+
+	m_RendererManager.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore, &m_Solver);
+
 	m_Gui.Initialize(
 		m_GraphicsCore.GetDevice(),
 		hWnd,

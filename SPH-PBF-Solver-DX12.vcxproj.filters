@@ -36,7 +36,7 @@
     <ClCompile Include="Source\Core\GraphicsCore.cpp">
       <Filter>Source\Core</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Core\Renderer.cpp">
+    <ClCompile Include="Source\Core\RendererManager.cpp">
       <Filter>Source\Core</Filter>
     </ClCompile>
     <ClCompile Include="Source\Core\SphSolver.cpp">
@@ -72,6 +72,9 @@
     <ClCompile Include="Source\Core\Camera.cpp">
       <Filter>Source\Core</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Core\SSFRPass.cpp">
+      <Filter>Source\Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Core\pch.h">
@@ -92,7 +95,7 @@
     <ClInclude Include="Source\Core\GraphicsCore.h">
       <Filter>Source\Core</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Core\Renderer.h">
+    <ClInclude Include="Source\Core\RendererManager.h">
       <Filter>Source\Core</Filter>
     </ClInclude>
     <ClInclude Include="Source\Core\SphSolver.h">
@@ -132,6 +135,15 @@
       <Filter>External\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="Source\Core\Camera.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\IRenderPass.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\RenderContext.h">
+      <Filter>Source\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Core\SSFRPass.h">
       <Filter>Source\Core</Filter>
     </ClInclude>
   </ItemGroup>

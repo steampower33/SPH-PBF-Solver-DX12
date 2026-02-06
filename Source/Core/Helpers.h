@@ -25,6 +25,46 @@ inline void ThrowIfFailed(HRESULT hr)
 }
 
 namespace Helpers {
+	inline void CreateRootSignature(
+		ID3D12Device* device,
+		const CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC& rootSigDesc,
+		D3D_ROOT_SIGNATURE_VERSION highestVersion,
+		Microsoft::WRL::ComPtr<ID3D12RootSignature>& outRootSig,
+		const char* debugName = nullptr)
+	{
+		Microsoft::WRL::ComPtr<ID3DBlob> signatureBlob;
+		Microsoft::WRL::ComPtr<ID3DBlob> errorBlob;
+
+		HRESULT hr = D3DX12SerializeVersionedRootSignature(
+			&rootSigDesc,
+			highestVersion,
+			&signatureBlob,
+			&errorBlob
+		);
+
+		if (FAILED(hr))
+		{
+			if (errorBlob)
+			{
+				OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+			}
+			ThrowIfFailed(hr);
+		}
+
+		ThrowIfFailed(device->CreateRootSignature(
+			0,
+			signatureBlob->GetBufferPointer(),
+			signatureBlob->GetBufferSize(),
+			IID_PPV_ARGS(&outRootSig)
+		));
+
+		if (debugName)
+		{
+			std::wstring wName(debugName, debugName + strlen(debugName));
+			outRootSig->SetName(wName.c_str());
+		}
+	}
+
 	inline Microsoft::WRL::ComPtr<ID3D12Resource> CreateDefaultBuffer(
 		ID3D12Device* device,
 		ID3D12GraphicsCommandList* cmdList,

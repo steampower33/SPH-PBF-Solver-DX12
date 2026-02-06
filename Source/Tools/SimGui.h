@@ -1,11 +1,7 @@
 #pragma once
 
 class SphSolver;
-class Renderer;
-
-#include "imgui.h"
-#include "imgui_impl_win32.h"
-#include "imgui_impl_dx12.h"
+class RendererManager;
 
 struct ExampleDescriptorHeapAllocator
 {
@@ -59,7 +55,7 @@ public:
 
     void BeginFrame();
     void EndFrame(ID3D12GraphicsCommandList* cmdList);
-    void DrawControlPanel(SphSolver* solver, Renderer* renderer);
+    void DrawControlPanel(SphSolver* solver, RendererManager* renderManager);
 
     bool m_IsPaused = true;
 private:

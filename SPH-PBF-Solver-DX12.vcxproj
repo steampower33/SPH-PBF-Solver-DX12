@@ -36,9 +36,10 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Source\Core\Renderer.cpp" />
+    <ClCompile Include="Source\Core\RendererManager.cpp" />
     <ClCompile Include="Source\Core\ShaderHelper.cpp" />
     <ClCompile Include="Source\Core\SphSolver.cpp" />
+    <ClCompile Include="Source\Core\SSFRPass.cpp" />
     <ClCompile Include="Source\Tools\SimGui.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -55,11 +56,14 @@
     <ClInclude Include="Source\Core\d3dx12.h" />
     <ClInclude Include="Source\Core\GameTimer.h" />
     <ClInclude Include="Source\Core\GraphicsCore.h" />
+    <ClInclude Include="Source\Core\IRenderPass.h" />
+    <ClInclude Include="Source\Core\RenderContext.h" />
     <ClInclude Include="Source\Core\ShaderHelper.h" />
     <ClInclude Include="Source\Core\SphSolver.h" />
-    <ClInclude Include="Source\Core\Renderer.h" />
+    <ClInclude Include="Source\Core\RendererManager.h" />
     <ClInclude Include="Source\Core\Helpers.h" />
     <ClInclude Include="Source\Core\pch.h" />
+    <ClInclude Include="Source\Core\SSFRPass.h" />
     <ClInclude Include="Source\Core\Vertex.h" />
     <ClInclude Include="Source\Tools\SimGui.h" />
   </ItemGroup>

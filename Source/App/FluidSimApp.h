@@ -1,7 +1,7 @@
 #pragma once
 
 #include "GraphicsCore.h"
-#include "Renderer.h"
+#include "RendererManager.h"
 #include "SphSolver.h"
 #include "ShaderHelper.h"
 #include "SimGui.h"
@@ -24,7 +24,7 @@ public:
 	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
 	GraphicsCore m_GraphicsCore;
-	Renderer	 m_Renderer;
+	RendererManager	 m_RendererManager;
 	SphSolver    m_Solver;
 	ShaderHelper m_ShaderHelper;
 	SimGui       m_Gui;

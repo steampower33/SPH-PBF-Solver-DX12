@@ -219,6 +219,9 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 
 	{
 		m_SimParams.NumParticles = m_NumParticles;
+		m_SimParams.DeltaTime = 1.0f / 144.0f;
+		
+		m_OriginMinX = m_SimParams.BoxX.x;
 	}
 
 	CreateComputeRootSignature(device);
@@ -523,4 +526,55 @@ void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* help
 
 	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_UpdateVelocityPSO)));
 	Helpers::SetDebugName(m_UpdateVelocityPSO.Get(), "m_UpdateVelocityPSO");
+}
+
+void SphSolver::OnGui()
+{
+	if (ImGui::CollapsingHeader("PBF Solver Settings", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		// Simulation Control
+		ImGui::SeparatorText("Simulation Control");
+		int fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60;
+		if (ImGui::DragInt("Target Sim FPS", &fps, 1, 30, 240)) {
+			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, fps);
+		}
+		ImGui::SliderInt("Sub-steps", &m_Iterations, 1, 10);
+
+		// Physical Properties
+		ImGui::SeparatorText("Fluid Properties");
+		ImGui::DragFloat("Mass", &m_SimParams.Mass, 0.01f, 0.001f, 10.0f);
+		ImGui::DragFloat("Rest Density", &m_SimParams.RestDensity, 10.0f, 100.0f, 5000.0f);
+		ImGui::DragFloat("Viscosity", &m_SimParams.Viscosity, 0.001f, 0.0f, 5.0f);
+		ImGui::DragFloat("Gravity Y", &m_SimParams.GravityY, 0.1f, -20.0f, 20.0f);
+
+		// Boundary & World
+		ImGui::SeparatorText("Boundary & World");
+
+		if (ImGui::DragFloat("Cell Size (h)", &m_SimParams.CellSize, 0.001f, 0.01f, 1.0f)) {
+			m_SimParams.CellSize = std::max(0.01f, m_SimParams.CellSize);
+		}
+
+		ImGui::DragFloat2("Box X (Min/Max)", &m_SimParams.BoxX.x, 0.1f);
+		ImGui::DragFloat2("Box Y (Min/Max)", &m_SimParams.BoxY.x, 0.1f);
+		ImGui::DragFloat2("Box Z (Min/Max)", &m_SimParams.BoxZ.x, 0.1f);
+
+		// Wall Movement
+		ImGui::SeparatorText("Moving Wall Interaction");
+		ImGui::Checkbox("Enable Move", &m_WallMove);
+		if (m_WallMove)
+		{
+			ImGui::DragFloat("Wall Speed", &m_WallSpeed, 0.1f);
+			ImGui::DragFloat("Wall Amplitude", &m_WallAmplitude, 0.1f);
+		}
+
+		// Advanced Stability
+		if (ImGui::TreeNode("Advanced Stability"))
+		{
+			ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1e6f, "%.0f");
+			ImGui::DragFloat("Tensile K", &m_SimParams.K, 1e-6f, 0.0f, 1.0f, "%.6f");
+			ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
+			ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
+			ImGui::TreePop();
+		}
+	}
 }

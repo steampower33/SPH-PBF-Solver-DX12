@@ -3,7 +3,7 @@ cbuffer Params : register(b0)
     matrix g_View;
     matrix g_Proj;
     float g_VisualRadius;
-    float g_ThicknessContribution;
+    float g_ThicknessCoeff;
 };
 
 struct Particle
