@@ -17,22 +17,24 @@ public:
 
 private:
     struct BlurParams {
-        float InvScreenWidth;
-        float InvScreenHeight;
+        SM::Vector2 InvScreenSize;
         float DirX;
         float DirY;
-        float Radius = 10.0f;
-        float SigmaSpatial = 4.0f;
+        float Radius = 4.0f;
+        float SigmaSpatial = 1.0f;
         float SigmaRange = 0.5f;
         float pad;
     } m_BlurParams;
 
     struct CompositeParams {
-        float InvWidth;
-        float InvHeight;
-        float Pad[2];
+        SM::Matrix InvView;
+        SM::Matrix InvProj;
         SM::Vector3 LightDir = { 0.0f, 1.0f, 0.0f };
-        float Pad2;
+        float pad0;
+        SM::Vector3 CamPos;
+        float pad1;
+        SM::Vector2 InvScreenSize;
+        float pad2[2];
     } m_CompositeParams;
 
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";

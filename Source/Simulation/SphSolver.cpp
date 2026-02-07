@@ -535,14 +535,20 @@ void SphSolver::OnGui()
 	{
 		// Simulation Control
 		ImGui::SeparatorText("Simulation Control");
-		int fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60;
-		float ms = (fps > 0.0f) ? (1000.0f / fps) : 0.0f;
-		ImGui::TextColored(ImVec4(0, 1, 0, 1), "%.1f FPS (%.3f ms)", fps, ms);
+
+		float realFPS = ImGui::GetIO().Framerate;
+		float realMS = 1000.0f / realFPS;
+		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Real: %.1f FPS (%.3f ms)", realFPS, realMS);
+
+		float fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60.0f;
+		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Sim Fixed: %.1f FPS", fps);
+
 		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
 		ImGui::Text("Time Step (dt): %.6f s", m_SimParams.DeltaTime);
-		if (ImGui::DragInt("Target Sim FPS", &fps, 1, 30, 240)) {
-			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, fps);
+		if (ImGui::DragFloat("Target Sim FPS", &fps, 1, 30.0, 240.0)) {
+			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, (int)fps);
 		}
+		ImGui::SliderInt("MaxSteps", &m_MaxSteps, 1, 10);
 		ImGui::SliderInt("Sub-steps", &m_Iterations, 1, 10);
 
 		// Physical Properties

@@ -20,16 +20,16 @@ float4 main(VSOutput input) : SV_TARGET
     if (input.UV.x < 0.5)
     {
         if (input.UV.y < 0.5)
-            baseColor = float3(0.5, 0.8, 0.5); // 💚 왼쪽 아래 (초록)
+            baseColor = float3(0.5, 0.8, 0.5); // LD - Green
         else
-            baseColor = float3(1.0, 0.6, 0.6); // 💗 왼쪽 위 (분홍)
+            baseColor = float3(1.0, 0.6, 0.6); // LU - Pink
     }
     else
     {
         if (input.UV.y < 0.5)
-            baseColor = float3(0.9, 0.8, 0.4); // 💛 오른쪽 아래 (노랑)
+            baseColor = float3(0.9, 0.8, 0.4); // RD - Yellow
         else
-            baseColor = float3(0.6, 0.4, 0.8); // 💜 오른쪽 위 (보라)
+            baseColor = float3(0.6, 0.4, 0.8); // RU - Purple
     }
     
     float3 finalColor = baseColor * (0.8 + 0.2 * checker);

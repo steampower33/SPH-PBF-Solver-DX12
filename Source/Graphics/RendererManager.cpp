@@ -8,6 +8,8 @@ void RendererManager::Update(const SM::Matrix& view, const SM::Matrix& proj)
 {
     m_RenderContext.Globals.View = view.Transpose();
     m_RenderContext.Globals.Proj = proj.Transpose();
+    m_RenderContext.InvView = view.Invert().Transpose();
+    m_RenderContext.InvProj = proj.Invert().Transpose();
 }
 
 void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)

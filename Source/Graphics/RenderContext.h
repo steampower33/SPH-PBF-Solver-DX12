@@ -37,9 +37,13 @@ struct RenderContext
     struct GlobalConstants {
         SM::Matrix View;
         SM::Matrix Proj;
-        float VisualRadius = 0.02f;
+        float VisualRadius = 0.03f;
         float ThicknessCoeff = 0.05f;
     } Globals;
+
+    SM::Matrix InvView;
+    SM::Matrix InvProj;
+    SM::Vector3 CamPos;
 
     const SphSolver* Solver = nullptr;
 

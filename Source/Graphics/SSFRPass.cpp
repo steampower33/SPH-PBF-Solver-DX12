@@ -7,6 +7,12 @@
 
 void SSFRPass::Render(const RenderContext& ctx)
 {
+	{
+		m_CompositeParams.InvView = ctx.InvView;
+		m_CompositeParams.InvProj = ctx.InvProj;
+		m_CompositeParams.CamPos = ctx.CamPos;
+	}
+
 	if (m_bDebugDrawParticles)
 	{
 		RenderParticles(ctx);
@@ -141,10 +147,6 @@ void SSFRPass::RenderFluidSmooth(const RenderContext& ctx)
 	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
-	BlurParams blurParams;
-	blurParams.InvScreenWidth = 1.0f / m_Width;
-	blurParams.InvScreenHeight = 1.0f / m_Height;
-
 	// [Pass 1] Horizontal: Depth(RTV->SRV) -> Temp(SRV->RTV)
 	D3D12_RESOURCE_BARRIER barriers1[] = {
 		CD3DX12_RESOURCE_BARRIER::Transition(m_FluidDepthTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
@@ -158,8 +160,8 @@ void SSFRPass::RenderFluidSmooth(const RenderContext& ctx)
 	auto gpuHandleDepth = m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart();
 	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleDepth);
 
-	blurParams.DirX = 1.0f; blurParams.DirY = 0.0f;
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &blurParams, 0);
+	m_BlurParams.DirX = 1.0f; m_BlurParams.DirY = 0.0f;
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
 	cmdList->DrawInstanced(3, 1, 0, 0);
 
 	// [Pass 2] Vertical: Temp(RTV->SRV) -> Depth(SRV->RTV)
@@ -176,8 +178,8 @@ void SSFRPass::RenderFluidSmooth(const RenderContext& ctx)
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandleTemp(m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart(), 1, srvSize);
 	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleTemp);
 
-	blurParams.DirX = 0.0f; blurParams.DirY = 1.0f;
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &blurParams, 0);
+	m_BlurParams.DirX = 0.0f; m_BlurParams.DirY = 1.0f;
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
 	cmdList->DrawInstanced(3, 1, 0, 0);
 
 	// Cleanup: Depth(RTV->SRV)
@@ -256,11 +258,7 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
-	CompositeParams compositeParams;
-	compositeParams.InvWidth = 1.0f / m_Width;
-	compositeParams.InvHeight = 1.0f / m_Height;
-
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(CompositeParams) / 4, &compositeParams, 0);
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(CompositeParams) / 4, &m_CompositeParams, 0);
 
 	// Current Frame Index, Offset, CopyDestIndex
 	UINT frameIndex = ctx.FrameIndex;
@@ -543,6 +541,12 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx)
 		m_QuadIBView.BufferLocation = m_QuadIB->GetGPUVirtualAddress();
 		m_QuadIBView.Format = DXGI_FORMAT_R16_UINT;
 		m_QuadIBView.SizeInBytes = ibByteSize;
+	}
+
+	// Set Params
+	{
+		m_BlurParams.InvScreenSize = { 1.0f / ctx.Width, 1.0f / ctx.Height };
+		m_CompositeParams.InvScreenSize = { 1.0f / ctx.Width, 1.0f / ctx.Height };
 	}
 
 	// Create Heaps

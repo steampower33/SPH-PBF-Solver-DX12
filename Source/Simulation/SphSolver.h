@@ -53,6 +53,7 @@ public:
 
 	void ToggleWallMovement() { m_WallMove = !m_WallMove; }
 
+	int m_MaxSteps = 2;
 private:
 	std::wstring m_ShaderBaseName = L"./Shaders/Simulation/";
 

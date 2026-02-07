@@ -18,8 +18,8 @@ public:
 
 private:
     struct Params {
-        float Scale = 5.0f;
-        float TileCount = 80.0f;
+        float Scale = 20.0f;
+        float TileCount = 100.0f;
     } m_Params;
 
     ComPtr<ID3D12Resource> m_QuadVB;
@@ -40,5 +40,4 @@ private:
     virtual void CreateRootSignatures(const RenderInitContext& ctx) override;
     virtual void CreatePSOs(const RenderInitContext& ctx) override;
     virtual void CreateResources(const RenderInitContext& ctx) override;
-
 };
