@@ -12,11 +12,10 @@ public:
     SSFRPass(const SSFRPass&) = delete;
     SSFRPass& operator=(const SSFRPass&) = delete;
 
-    virtual void Initialize(const RenderInitContext& ctx) override;
     virtual void Render(const RenderContext& ctx) override;
+    virtual void OnGui(RenderContext& ctx) override;
 
-    void OnGui(RenderContext& ctx);
-
+private:
     struct BlurParams {
         float InvScreenWidth;
         float InvScreenHeight;
@@ -36,13 +35,9 @@ public:
         float Pad2;
     } m_CompositeParams;
 
-private:
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";
 
     bool m_bDebugDrawParticles = false;
-
-    UINT m_Width = 0;
-    UINT m_Height = 0;
 
     ComPtr<ID3D12DescriptorHeap> m_FluidRtvHeap;
     ComPtr<ID3D12DescriptorHeap> m_FluidSrvHeap;
@@ -57,7 +52,6 @@ private:
 
     ComPtr<IDxcBlob> m_ParticleVS;
     ComPtr<IDxcBlob> m_ParticlePS;
-    ComPtr<IDxcBlob> m_FullScreenQuadVS;
     ComPtr<IDxcBlob> m_FluidDepthPS;
     ComPtr<IDxcBlob> m_FluidSmoothPS;
     ComPtr<IDxcBlob> m_FluidThicknessPS;
@@ -94,12 +88,10 @@ private:
     ComPtr<ID3D12RootSignature> m_FluidCompositeRootSig;
     ComPtr<ID3D12PipelineState> m_FluidCompositePSO;
 
-    void CreateShaders(const RenderInitContext& ctx);
-    void CreateRootSignatures(const RenderInitContext& ctx);
-    void CreatePSOs(const RenderInitContext& ctx);
-
-    void CreateFluidResources(const RenderInitContext& ctx);
-    void CreateQuadMesh(const RenderInitContext& ctx);
+    virtual void CreateShaders(const RenderInitContext& ctx) override;
+    virtual void CreateRootSignatures(const RenderInitContext& ctx)override;
+    virtual void CreatePSOs(const RenderInitContext& ctx) override;
+    virtual void CreateResources(const RenderInitContext& ctx) override;
 
     void RenderParticles(const RenderContext& ctx);
     void RenderFluidDepth(const RenderContext& ctx);

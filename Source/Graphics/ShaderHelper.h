@@ -11,8 +11,12 @@ public:
 		const std::wstring& entryPoint,
 		const std::wstring& targetProfile);
 
+	IDxcBlob* GetFullScreenQuadVS();
+
 private:
 	ComPtr<IDxcUtils> m_Utils;
 	ComPtr<IDxcCompiler3> m_Compiler;
 	ComPtr<IDxcIncludeHandler> m_IncludeHandler;
+
+	ComPtr<IDxcBlob> m_FullScreenQuadVS;
 };

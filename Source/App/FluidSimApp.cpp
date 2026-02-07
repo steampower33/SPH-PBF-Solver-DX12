@@ -68,6 +68,7 @@ bool FluidSimApp::Run()
 
 		m_RendererManager.Render(cmdList);
 
+		// If the RTV format is changed, change the RTV format in ImGui initialization.
 		m_Gui.BeginFrame();
 		m_Gui.DrawControlPanel(&m_Solver, &m_RendererManager);
 		m_Gui.EndFrame(cmdList);

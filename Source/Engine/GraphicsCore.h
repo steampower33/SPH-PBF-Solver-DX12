@@ -30,7 +30,10 @@ public:
 	}
 
 	static constexpr UINT FrameCount = 3;
+
+	UINT m_FrameIndex = 0;
 private:
+
 	HWND m_Hwnd = nullptr;
 	float m_AspectRatio = 0;
 	float m_Width = 0;
@@ -62,8 +65,6 @@ private:
 	HANDLE m_FenceEvent = nullptr;
 
 	bool m_UseWarpDevice = false;
-
-	UINT m_FrameIndex = 0;
 
 	void CreateDX12Core();
 	void GetHardwareAdapter(

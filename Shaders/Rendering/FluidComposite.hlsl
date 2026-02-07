@@ -1,5 +1,7 @@
 Texture2D<float> g_DepthMap : register(t0);
 Texture2D<float> g_Thickness : register(t2);
+Texture2D<float4> g_SceneTex : register(t3);
+Texture2D<float4> g_SceneDepth : register(t4);
 
 SamplerState g_PointClamp : register(s0);
 SamplerState g_LinearClamp : register(s1);
@@ -70,7 +72,9 @@ float4 main(VSOutput input) : SV_Target
     // Depth Check
     float depth = g_DepthMap.Sample(g_PointClamp, input.UV);
     if (depth > 10000.0)
-        discard;
+    {
+        return g_SceneTex.Sample(g_LinearClamp, input.UV);
+    }
 
     // Normal Reconstruction
     float2 uv = input.UV;

@@ -5,6 +5,13 @@ void ShaderHelper::Initialize()
     ThrowIfFailed(DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&m_Utils)));
     ThrowIfFailed(DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&m_Compiler)));
     ThrowIfFailed(m_Utils->CreateDefaultIncludeHandler(&m_IncludeHandler));
+
+    m_FullScreenQuadVS = Compile(L"./Shaders/Rendering/", L"FullScreenQuadVS.hlsl", L"main", L"vs_6_0");
+}
+
+IDxcBlob* ShaderHelper::GetFullScreenQuadVS()
+{
+    return m_FullScreenQuadVS.Get();
 }
 
 ComPtr<IDxcBlob> ShaderHelper::Compile(

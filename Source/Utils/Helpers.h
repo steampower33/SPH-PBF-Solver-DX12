@@ -159,4 +159,5 @@ namespace Helpers {
 	{
 		SetDebugName(pObject, name.c_str());
 	}
+
 }

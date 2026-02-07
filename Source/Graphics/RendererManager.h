@@ -3,7 +3,7 @@
 #include "SphSolver.h"
 #include "GraphicsCore.h"
 #include "RenderContext.h"
-#include "SSFRPass.h"
+#include "IRenderPass.h"
 
 class RendererManager
 {
@@ -25,5 +25,19 @@ private:
 	RenderInitContext m_RenderInitContext{};
 	RenderContext m_RenderContext{};
 
-	SSFRPass m_SSFRPass{};
+	std::vector<std::unique_ptr<IRenderPass>> m_RenderPasses;
+
+	ComPtr<ID3D12Resource> m_SceneColorTex;
+	ComPtr<ID3D12Resource> m_SceneDepthTex;
+
+	ComPtr<ID3D12DescriptorHeap> m_SceneRTVHeap;
+	ComPtr<ID3D12DescriptorHeap> m_SceneSRVHeap;
+	ComPtr<ID3D12DescriptorHeap> m_SceneDSVHeap;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneColorRTVHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneColorSRVHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDepthSRVHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDSVHandle;
+
+	void CreateSceneResources(const RenderInitContext& ctx);
 };

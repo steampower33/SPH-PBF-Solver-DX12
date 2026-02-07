@@ -93,6 +93,9 @@
     <ClCompile Include="Source\Scene\Camera.cpp">
       <Filter>Source\Scene</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Graphics\PlanePass.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\App\FluidSimApp.h">
@@ -134,9 +137,6 @@
     <ClInclude Include="Source\Engine\GraphicsCore.h">
       <Filter>Source\Engine</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Engine\pch.h">
-      <Filter>Source\Engine</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Graphics\IRenderPass.h">
       <Filter>Source\Graphics</Filter>
     </ClInclude>
@@ -163,6 +163,12 @@
     </ClInclude>
     <ClInclude Include="Source\Scene\Camera.h">
       <Filter>Source\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\PlanePass.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Engine\pch.h">
+      <Filter>Source\Engine</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -196,6 +202,9 @@
     <FxCompile Include="Shaders\Simulation\VorticityCS.hlsl">
       <Filter>Shaders\Simulation</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Simulation\Common.hlsli">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
     <FxCompile Include="Shaders\Rendering\FluidComposite.hlsl">
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
@@ -217,8 +226,11 @@
     <FxCompile Include="Shaders\Rendering\ParticleVS.hlsl">
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\Simulation\Common.hlsli">
-      <Filter>Shaders\Simulation</Filter>
+    <FxCompile Include="Shaders\Rendering\PlanePS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\PlaneVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

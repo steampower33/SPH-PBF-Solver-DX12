@@ -1,0 +1,144 @@
+#include "ShaderHelper.h"
+#include "GraphicsCore.h"
+#include "Vertex.h"
+
+#include "PlanePass.h"
+
+void PlanePass::Render(const RenderContext& ctx)
+{
+	auto cmdList = ctx.CmdList;
+
+	D3D12_RESOURCE_BARRIER barrierStart = CD3DX12_RESOURCE_BARRIER::Transition(
+		ctx.SceneDepthTex,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE
+	);
+	cmdList->ResourceBarrier(1, &barrierStart);
+
+	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	cmdList->ClearRenderTargetView(ctx.SceneRTV, clearColor, 0, nullptr);
+	cmdList->ClearDepthStencilView(ctx.SceneDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	cmdList->OMSetRenderTargets(1, &ctx.SceneRTV, FALSE, &ctx.SceneDSV);
+
+	// Viewport & Scissor
+	cmdList->RSSetViewports(1, &ctx.Viewport);
+	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
+
+	cmdList->SetGraphicsRootSignature(m_PlaneRootSig.Get());
+	cmdList->SetPipelineState(m_PlanePSO.Get());
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
+	cmdList->SetGraphicsRoot32BitConstants(1, sizeof(Params) / 4, &m_Params, 0);
+
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
+	cmdList->IASetIndexBuffer(&m_QuadIBView);
+	cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+
+	D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
+		ctx.SceneDepthTex,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+	cmdList->ResourceBarrier(1, &barrierEnd);
+}
+
+void PlanePass::CreateShaders(const RenderInitContext& ctx)
+{
+	m_PlaneVS = ctx.ShaderHelper->Compile(L"./Shaders/Rendering/", L"PlaneVS.hlsl", L"main", L"vs_6_0");
+	m_PlanePS = ctx.ShaderHelper->Compile(L"./Shaders/Rendering/", L"PlanePS.hlsl", L"main", L"ps_6_0");
+}
+
+void PlanePass::CreateRootSignatures(const RenderInitContext& ctx)
+{
+	auto device = ctx.Device;
+
+	D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+	featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+		featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+
+	{
+		CD3DX12_ROOT_PARAMETER1 params[2];
+		params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+		params[1].InitAsConstants(sizeof(Params) / 4.0, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(__crt_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_PlaneRootSig, "m_PlaneRootSig");
+	}
+}
+
+void PlanePass::CreatePSOs(const RenderInitContext& ctx)
+{
+	auto device = ctx.Device;
+
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
+
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+		psoDesc.pRootSignature = m_PlaneRootSig.Get();
+
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_PlaneVS->GetBufferPointer(), m_PlaneVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_PlanePS->GetBufferPointer(), m_PlanePS->GetBufferSize());
+
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
+
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PlanePSO)));
+		Helpers::SetDebugName(m_PlanePSO.Get(), "m_PlanePSO");
+	}
+}
+
+void PlanePass::CreateResources(const RenderInitContext& ctx)
+{
+	auto device = ctx.Device;
+	auto cmdList = ctx.CmdList;
+
+	// Quad Mesh
+	{
+		Vertex quadVertices[] = {
+			{ { -1.0f,  0.0f, -1.0f }, { 0.0f, 0.0f } },
+			{ {  1.0f,  0.0f, -1.0f }, { 1.0f, 0.0f } },
+			{ {  1.0f,  0.0f,  1.0f }, { 1.0f, 1.0f } },
+			{ { -1.0f,  0.0f,  1.0f }, { 0.0f, 1.0f } },
+		};
+
+		uint16_t quadIndices[] = { 0, 1, 2, 0, 2, 3 };
+
+		const UINT vbByteSize = sizeof(quadVertices);
+		const UINT ibByteSize = sizeof(quadIndices);
+
+		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, m_QuadVBUpload);
+		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, m_QuadIBUpload);
+
+		m_QuadVBView.BufferLocation = m_QuadVB->GetGPUVirtualAddress();
+		m_QuadVBView.StrideInBytes = sizeof(Vertex);
+		m_QuadVBView.SizeInBytes = vbByteSize;
+
+		m_QuadIBView.BufferLocation = m_QuadIB->GetGPUVirtualAddress();
+		m_QuadIBView.Format = DXGI_FORMAT_R16_UINT;
+		m_QuadIBView.SizeInBytes = ibByteSize;
+	}
+}
+
+void PlanePass::OnGui(RenderContext& ctx)
+{
+	if (ImGui::CollapsingHeader("Plane", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::DragFloat("Scale", &m_Params.Scale, 0.1f, 0.0f, 100.0f);
+		ImGui::DragFloat("TileCount", &m_Params.TileCount, 1.0f, 0.0f, 100.0f);
+	}
+}

@@ -31,23 +31,23 @@ ID3D12GraphicsCommandList* GraphicsCore::BeginFrame()
 
 	m_CommandList->ResourceBarrier(1, &barrier);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-		m_RtvHeap->GetCPUDescriptorHandleForHeapStart(),
-		m_FrameIndex,
-		m_RtvDescriptorSize);
+	//CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
+	//	m_RtvHeap->GetCPUDescriptorHandleForHeapStart(),
+	//	m_FrameIndex,
+	//	m_RtvDescriptorSize);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(
-		m_DsvHeap->GetCPUDescriptorHandleForHeapStart());
+	//CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(
+	//	m_DsvHeap->GetCPUDescriptorHandleForHeapStart());
 
-	m_CommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+	//m_CommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
-	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)m_Width, (float)m_Height, 0.0f, 1.0f };
-	D3D12_RECT scissorRect = { 0, 0, (LONG)m_Width, (LONG)m_Height };
-	m_CommandList->RSSetViewports(1, &viewport);
-	m_CommandList->RSSetScissorRects(1, &scissorRect);
+	//D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)m_Width, (float)m_Height, 0.0f, 1.0f };
+	//D3D12_RECT scissorRect = { 0, 0, (LONG)m_Width, (LONG)m_Height };
+	//m_CommandList->RSSetViewports(1, &viewport);
+	//m_CommandList->RSSetScissorRects(1, &scissorRect);
 
-	m_CommandList->ClearRenderTargetView(rtvHandle, m_ClearColor, 0, nullptr);
-	m_CommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	//m_CommandList->ClearRenderTargetView(rtvHandle, m_ClearColor, 0, nullptr);
+	//m_CommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	return m_CommandList.Get();
 }
@@ -290,12 +290,12 @@ void GraphicsCore::CreateDescriptorHeaps()
 	depthStencilDesc.Height = static_cast<UINT>(m_Height);
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	depthStencilDesc.SampleDesc.Count = 1;
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE clearValue = {};
-	clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	clearValue.Format = DXGI_FORMAT_D32_FLOAT;
 	clearValue.DepthStencil.Depth = 1.0f;
 	clearValue.DepthStencil.Stencil = 0;
 
@@ -311,7 +311,7 @@ void GraphicsCore::CreateDescriptorHeaps()
 	Helpers::SetDebugName(m_DsBuffer.Get(), "Buffer_DSV_Main");
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 
