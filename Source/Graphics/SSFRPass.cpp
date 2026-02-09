@@ -10,7 +10,11 @@ void SSFRPass::Render(const RenderContext& ctx)
 	{
 		m_CompositeParams.InvView = ctx.InvView;
 		m_CompositeParams.InvProj = ctx.InvProj;
+		m_CompositeParams.ShadowTransform = ctx.ShadowTransform;
 		m_CompositeParams.CamPos = ctx.CamPos;
+		m_CompositeParams.ShadowIntensity = ctx.ShadowIntensity;
+		//m_CompositeParams.LightPos = ctx.LightPos;
+		//m_CompositeParams.LightDir = ctx.LightDir;
 	}
 
 	if (m_bDebugDrawParticles)
@@ -26,6 +30,55 @@ void SSFRPass::Render(const RenderContext& ctx)
 	}
 }
 
+void SSFRPass::RenderDepthOnly(const RenderContext& ctx)
+{
+	auto cmdList = ctx.CmdList;
+	auto solver = ctx.Solver;
+
+	D3D12_RESOURCE_BARRIER b0 = CD3DX12_RESOURCE_BARRIER::Transition(
+		solver->GetParticleBuffer(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+	);
+	cmdList->ResourceBarrier(1, &b0);
+
+	cmdList->ClearDepthStencilView(ctx.ShadowDSVHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	cmdList->OMSetRenderTargets(0, nullptr, FALSE, &ctx.ShadowDSVHandle);
+
+	UINT res = ctx.res;
+	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)res, (float)res, 0.0f, 1.0f };
+	D3D12_RECT scissorRect = { 0, 0, (LONG)res, (LONG)res };
+	cmdList->RSSetViewports(1, &viewport);
+	cmdList->RSSetScissorRects(1, &scissorRect);
+
+	cmdList->SetGraphicsRootSignature(m_ShadowRootSig.Get());
+	cmdList->SetPipelineState(m_ShadowPSO.Get());
+
+	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	m_LightParams.LightView = ctx.LightView;
+	m_LightParams.LightProj = ctx.LightProj;
+	m_LightParams.VisualRadius = ctx.Globals.VisualRadius;
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(LightParams) / 4, &m_LightParams, 0);
+	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+
+	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
+	cmdList->IASetIndexBuffer(&m_QuadIBView);
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	cmdList->DrawIndexedInstanced(6, solver->GetNumParticles(), 0, 0, 0);
+
+	D3D12_RESOURCE_BARRIER b1 = CD3DX12_RESOURCE_BARRIER::Transition(
+		solver->GetParticleBuffer(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+	);
+	cmdList->ResourceBarrier(1, &b1);
+}
+
 void SSFRPass::OnGui(RenderContext& ctx)
 {
     if (ImGui::CollapsingHeader("SSFR Visualization", ImGuiTreeNodeFlags_DefaultOpen))
@@ -37,6 +90,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 		if (m_bDebugDrawParticles)
 		{
 			ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
+			ctx.Globals.VisualRadius = 0.02f;
 		}
 		else
 		{
@@ -45,11 +99,6 @@ void SSFRPass::OnGui(RenderContext& ctx)
 
 			ImGui::SeparatorText("Fluid Material");
 			ImGui::DragFloat("Thickness Coeff", &ctx.Globals.ThicknessCoeff, 0.001f, 0.0f, 1.0f);
-
-			if (ImGui::DragFloat3("Light Dir", &m_CompositeParams.LightDir.x, 0.05f, -1.0f, 1.0f))
-			{
-				m_CompositeParams.LightDir.Normalize();
-			}
 
 			ImGui::SeparatorText("Depth Blur");
 			ImGui::DragFloat("Blur Radius", &m_BlurParams.Radius, 0.1f, 0.0f, 50.0f);
@@ -250,16 +299,6 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	);
 	cmdList->ResourceBarrier(1, &barrierStart);
 
-	cmdList->SetGraphicsRootSignature(m_FluidCompositeRootSig.Get());
-	cmdList->SetPipelineState(m_FluidCompositePSO.Get());
-	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	// Bind Fluid Heap (Depth, Thickness)
-	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(CompositeParams) / 4, &m_CompositeParams, 0);
-
 	// Current Frame Index, Offset, CopyDestIndex
 	UINT frameIndex = ctx.FrameIndex;
 	UINT frameOffset = frameIndex * 5;
@@ -268,10 +307,19 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	UINT srvSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), destIndex, srvSize);
 
-	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneColorCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneColorSRVHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	destHandle.Offset(1, srvSize);
-	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneDepthCPUHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneDepthSRVHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	cmdList->SetGraphicsRootSignature(m_FluidCompositeRootSig.Get());
+	cmdList->SetPipelineState(m_FluidCompositePSO.Get());
+
+	// Bind Fluid Heap (Depth, Thickness)
+	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(CompositeParams) / 4, &m_CompositeParams, 0);
 
 	auto gpuHandleStart = m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart();
 	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleStart);
@@ -284,6 +332,7 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
 
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->DrawInstanced(3, 1, 0, 0);
 
 	D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -309,6 +358,9 @@ void SSFRPass::CreateShaders(const RenderInitContext& ctx)
     m_FluidSmoothPS = helper->Compile(m_ShaderBaseName, L"FluidSmooth.hlsl", L"main", L"ps_6_0");
     m_FluidThicknessPS = helper->Compile(m_ShaderBaseName, L"FluidThicknessPS.hlsl", L"main", L"ps_6_0");
     m_FluidCompositePS = helper->Compile(m_ShaderBaseName, L"FluidComposite.hlsl", L"main", L"ps_6_0");
+
+	m_ShadowVS = helper->Compile(L"./Shaders/Rendering/", L"ShadowVS.hlsl", L"main", L"vs_6_0");
+	m_ShadowPS = helper->Compile(L"./Shaders/Rendering/", L"ShadowPS.hlsl", L"main", L"ps_6_0");
 }
 
 void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
@@ -320,7 +372,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
     if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
         featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 
-    // 1. Particle / Depth / Thickness (Shared)
+    // Particle / Depth / Thickness (Shared)
     {
         CD3DX12_ROOT_PARAMETER1 params[2];
         params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
@@ -336,7 +388,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
     }
     m_RenderParticleRootSig = m_FluidDepthRootSig;
 
-    // 2. Smooth
+    // Smooth
     {
         CD3DX12_DESCRIPTOR_RANGE1 srvRange;
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
@@ -353,7 +405,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
         Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidSmoothRootSig, "FluidSmoothRootSig");
     }
 
-    // 3. Composite
+    // Composite
     {
 		CD3DX12_DESCRIPTOR_RANGE1 fluidRange;
 		fluidRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
@@ -371,10 +423,25 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
         samplers[1] = CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-        desc.Init_1_1(3, params, 2, samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        desc.Init_1_1(__crt_countof(params), params, __crt_countof(samplers), samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidCompositeRootSig, "FluidCompositeRootSig");
     }
+
+	// ShadowMap
+	{
+		CD3DX12_ROOT_PARAMETER1 params[2];
+		params[0].InitAsConstants(sizeof(LightParams) / 4, 0);
+
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_ShadowRootSig, "m_ShadowRootSig");
+	}
 }
 
 void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
@@ -510,6 +577,34 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 
         ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidCompositePSO)));
     }
+
+	// Shadow
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+		psoDesc.pRootSignature = m_ShadowRootSig.Get();
+
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ShadowVS->GetBufferPointer(), m_ShadowVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_ShadowPS->GetBufferPointer(), m_ShadowPS->GetBufferSize());
+
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.RasterizerState.DepthBias = 0.0f;
+		psoDesc.RasterizerState.DepthBiasClamp = 0.0f;
+		psoDesc.RasterizerState.SlopeScaledDepthBias = 0.0f;
+
+		psoDesc.NumRenderTargets = 0;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
+
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_ShadowPSO)));
+	}
 }
 
 void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)

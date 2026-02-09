@@ -46,7 +46,7 @@ bool FluidSimApp::Run()
 
 		// --- Update ---
 		m_Camera.Update(dt);
-		m_RendererManager.Update(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix());
+		m_RendererManager.Update(m_Camera.GetViewMatrix(), m_Camera.GetProjectionMatrix(), m_Camera.GetEyePos());
 
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();

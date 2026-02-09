@@ -31,8 +31,8 @@ struct RenderContext
     D3D12_VIEWPORT Viewport;
     D3D12_RECT ScissorRect;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneColorCPUHandle;
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneDepthCPUHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE SceneColorSRVHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE SceneDepthSRVHandle;
 
     struct GlobalConstants {
         SM::Matrix View;
@@ -44,6 +44,20 @@ struct RenderContext
     SM::Matrix InvView;
     SM::Matrix InvProj;
     SM::Vector3 CamPos;
+
+    UINT res = 2048;
+    SM::Vector3 LightPos = SM::Vector3(0.0f, 10.0f, 10.0f);
+    SM::Vector3 TargetPos = SM::Vector3(0.0f, 0.0f, 0.0f);
+    SM::Vector3 LightDir;
+    SM::Matrix LightView;
+    SM::Matrix LightProj;
+    SM::Matrix ShadowTransform;
+    float ShadowIntensity = 0.7f;
+
+    ComPtr<ID3D12DescriptorHeap> ShadowSRVHeap;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE ShadowDSVHandle;
+    D3D12_CPU_DESCRIPTOR_HANDLE ShadowSRVHandle;
 
     const SphSolver* Solver = nullptr;
 

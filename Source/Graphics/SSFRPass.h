@@ -13,6 +13,7 @@ public:
     SSFRPass& operator=(const SSFRPass&) = delete;
 
     virtual void Render(const RenderContext& ctx) override;
+    virtual void RenderDepthOnly(const RenderContext& ctx) override;
     virtual void OnGui(RenderContext& ctx) override;
 
 private:
@@ -21,7 +22,7 @@ private:
         float DirX;
         float DirY;
         float Radius = 4.0f;
-        float SigmaSpatial = 1.0f;
+        float SigmaSpatial = 4.0f;
         float SigmaRange = 0.5f;
         float pad;
     } m_BlurParams;
@@ -29,13 +30,17 @@ private:
     struct CompositeParams {
         SM::Matrix InvView;
         SM::Matrix InvProj;
-        SM::Vector3 LightDir = { 0.0f, 1.0f, 0.0f };
-        float pad0;
+        SM::Matrix ShadowTransform;
         SM::Vector3 CamPos;
-        float pad1;
+        float ShadowIntensity;
         SM::Vector2 InvScreenSize;
-        float pad2[2];
     } m_CompositeParams;
+
+    struct LightParams {
+        SM::Matrix LightView;
+        SM::Matrix LightProj;
+        float VisualRadius;
+    } m_LightParams;
 
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";
 
@@ -56,6 +61,8 @@ private:
     ComPtr<IDxcBlob> m_FluidSmoothPS;
     ComPtr<IDxcBlob> m_FluidThicknessPS;
     ComPtr<IDxcBlob> m_FluidCompositePS;
+    ComPtr<IDxcBlob> m_ShadowVS;
+    ComPtr<IDxcBlob> m_ShadowPS;
 
     // [Step 1] Particle Depth (Linear Depth)
     ComPtr<ID3D12Resource> m_FluidDepthTexture;
@@ -87,6 +94,10 @@ private:
     // [Step 4] Final Composite
     ComPtr<ID3D12RootSignature> m_FluidCompositeRootSig;
     ComPtr<ID3D12PipelineState> m_FluidCompositePSO;
+
+    // Shadow
+    ComPtr<ID3D12RootSignature> m_ShadowRootSig;
+    ComPtr<ID3D12PipelineState> m_ShadowPSO;
 
     virtual void CreateShaders(const RenderInitContext& ctx) override;
     virtual void CreateRootSignatures(const RenderInitContext& ctx)override;

@@ -1,3 +1,5 @@
+#include "RenderCommon.hlsli"
+
 Texture2D<float> g_DepthMap : register(t0);
 Texture2D<float> g_Thickness : register(t2);
 Texture2D<float4> g_SceneTex : register(t3);
@@ -10,13 +12,13 @@ cbuffer cbParams : register(b0)
 {
     matrix g_ViewInverse;
     matrix g_ProjInverse;
-    float3 g_LightDir;
-    float g_pad0;
+    matrix g_ShadowTransform;
     float3 g_CamPos;
-    float g_pad1;
+    float g_ShadowIntensity;
     float2 g_InvScreenSize;
-    float2 g_pad2;
 };
+
+static const float3 g_LightPos = float3(0.0f, 10.0f, 10.0f);
 
 struct VSOutput
 {
@@ -118,44 +120,53 @@ float4 main(VSOutput input) : SV_Target
     float4 worldPos4 = mul(float4(posCenter, 1.0), g_ViewInverse);
     float3 worldPos = worldPos4.xyz / worldPos4.w;
 
-    float3 L = normalize(g_LightDir);
+    float3 LightDirection = normalize(float3(0.0, 0.0, 0.0) - g_LightPos);
+
+    float3 L = normalize(-LightDirection);
+    
     float3 V = normalize(g_CamPos - worldPos);
     float3 H = normalize(L + V);
     float3 N = N_world;
     
     float roughness = 0.1;
     float F0 = 0.02;
-    
+    float NdotH = max(dot(N, H), 0.0);
     float NdotV = max(dot(N, V), 0.0);
     float NdotL = max(dot(N, L), 0.0);
-    float NdotH = max(dot(N, H), 0.0);
-    
+
     float D = DistributionGGX(N, H, roughness);
     float G = GeometrySmith(N, V, L, roughness);
     float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-    
-    float3 kS = F;
-    float3 kD = 1.0 - kS;
-    
-    float3 nominator = D * G * F;
+
+    float3 numerator = D * G * F;
     float denominator = 4.0 * NdotV * NdotL + 0.001;
-    float3 specular = nominator / denominator;
-    
-    specular *= 2.0;
-    
+    float3 specular = numerator / denominator;
+    float spotEffect = 1.0;
+    float3 lightColor = float3(1.0, 1.0, 1.0);
+
     float thickness = g_Thickness.Sample(g_LinearClamp, input.UV).r;
     
-    float2 refractionUV = input.UV + N_view.xy * 0.05 * saturate(thickness * 0.5);
-    float3 bgColor = g_SceneTex.Sample(g_LinearClamp, refractionUV).rgb;
-    
-    float3 absorptionColor = float3(1.5, 0.5, 0.3);
-    float3 transmittance = exp(-absorptionColor * thickness * 2.0);
+    float3 absorptionCoef = float3(1.5, 0.5, 0.3);
+    float3 transmittance = exp(-absorptionCoef * thickness);
 
-    float3 refractedColor = bgColor * transmittance;
+    float diffuseWrap = (dot(N, L) * 0.5 + 0.5);
+    
+    float lightIntensity = max(diffuseWrap, g_ShadowIntensity);
+    
+    float3 finalTransmittance = transmittance * lightIntensity;
+
+    float2 refractionUV = input.UV + N_view.xy * 0.02 * saturate(thickness);
+    float3 sceneColor = g_SceneTex.Sample(g_LinearClamp, refractionUV).rgb;
+
+    float3 refractedColor = sceneColor * finalTransmittance;
+
     float3 viewDir = normalize(worldPos - g_CamPos);
     float3 R = reflect(viewDir, N);
     float3 reflectionColor = GetProceduralSky(R);
-    float3 finalColor = lerp(refractedColor, reflectionColor, F) + specular;
+
+    float3 finalSpecular = specular * lightColor;
+
+    float3 finalColor = lerp(refractedColor, reflectionColor, F) + finalSpecular;
 
     return float4(finalColor, 1.0);
 }

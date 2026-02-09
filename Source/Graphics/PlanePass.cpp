@@ -7,6 +7,7 @@
 void PlanePass::Render(const RenderContext& ctx)
 {
 	auto cmdList = ctx.CmdList;
+	auto device = ctx.Device;
 
 	D3D12_RESOURCE_BARRIER barrierStart = CD3DX12_RESOURCE_BARRIER::Transition(
 		ctx.SceneDepthTex,
@@ -24,11 +25,31 @@ void PlanePass::Render(const RenderContext& ctx)
 	cmdList->RSSetViewports(1, &ctx.Viewport);
 	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
 
+	UINT frameIndex = ctx.FrameIndex;
+	UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE srcHandle(ctx.ShadowSRVHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(m_PlaneSRVHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, descriptorSize);
+
+	device->CopyDescriptorsSimple(1, destHandle, srcHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 	cmdList->SetGraphicsRootSignature(m_PlaneRootSig.Get());
 	cmdList->SetPipelineState(m_PlanePSO.Get());
 
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	cmdList->SetGraphicsRoot32BitConstants(1, sizeof(Params) / 4, &m_Params, 0);
+	m_Params.View = ctx.Globals.View;
+	m_Params.Proj = ctx.Globals.Proj;
+	m_Params.ShadowTransform = ctx.ShadowTransform;
+	m_Params.LightPos = ctx.LightPos;
+	m_Params.LightDir = ctx.LightDir;
+	m_Params.ShadowIntensity = ctx.ShadowIntensity;
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &m_Params, 0);
+
+	ID3D12DescriptorHeap* heaps[] = { m_PlaneSRVHeap.Get()};
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_PlaneSRVHeap->GetGPUDescriptorHandleForHeapStart(), frameIndex, descriptorSize);
+	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandle);
 
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
@@ -41,6 +62,10 @@ void PlanePass::Render(const RenderContext& ctx)
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);
 	cmdList->ResourceBarrier(1, &barrierEnd);
+}
+
+void PlanePass::RenderDepthOnly(const RenderContext& ctx)
+{
 }
 
 void PlanePass::CreateShaders(const RenderInitContext& ctx)
@@ -60,11 +85,27 @@ void PlanePass::CreateRootSignatures(const RenderInitContext& ctx)
 
 	{
 		CD3DX12_ROOT_PARAMETER1 params[2];
-		params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
-		params[1].InitAsConstants(sizeof(Params) / 4.0, 1, 0, D3D12_SHADER_VISIBILITY_ALL);
+		params[0].InitAsConstants(sizeof(Params) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		D3D12_STATIC_SAMPLER_DESC samplers[1];
+		samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(
+			0,
+			D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			0.0f,
+			16,
+			D3D12_COMPARISON_FUNC_LESS_EQUAL,
+			D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE
+		);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-		desc.Init_1_1(__crt_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		desc.Init_1_1(__crt_countof(params), params, __crt_countof(samplers), samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_PlaneRootSig, "m_PlaneRootSig");
 	}
@@ -132,13 +173,23 @@ void PlanePass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr
 		m_QuadIBView.Format = DXGI_FORMAT_R16_UINT;
 		m_QuadIBView.SizeInBytes = ibByteSize;
 	}
+
+	// Srv Heap
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+		srvHeapDesc.NumDescriptors = GraphicsCore::FrameCount;
+		srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+
+		ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_PlaneSRVHeap)));
+	}
 }
 
 void PlanePass::OnGui(RenderContext& ctx)
 {
 	if (ImGui::CollapsingHeader("Plane", ImGuiTreeNodeFlags_DefaultOpen))
 	{
-		ImGui::DragFloat("Scale", &m_Params.Scale, 0.1f, 0.0f, 100.0f);
+		ImGui::DragFloat("Scale", &m_Params.TileScale, 0.1f, 0.0f, 100.0f);
 		ImGui::DragFloat("TileCount", &m_Params.TileCount, 1.0f, 0.0f, 100.0f);
 	}
 }

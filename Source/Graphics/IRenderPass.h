@@ -19,6 +19,7 @@ public:
     }
 
     virtual void Render(const RenderContext& ctx) = 0;
+    virtual void RenderDepthOnly(const RenderContext& ctx) = 0;
 
     virtual void OnGui(RenderContext& ctx) = 0;
 

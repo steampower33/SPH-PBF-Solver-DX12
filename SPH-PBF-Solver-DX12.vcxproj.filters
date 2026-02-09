@@ -173,6 +173,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="Shaders\Rendering\RenderCommon.hlsli">
+      <Filter>Shaders\Rendering</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Simulation\BitonicSortCS.hlsl">
@@ -234,6 +237,12 @@
     </FxCompile>
     <FxCompile Include="Shaders\Simulation\PermuteDataCS.hlsl">
       <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\ShadowVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\ShadowPS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

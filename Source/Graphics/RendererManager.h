@@ -13,7 +13,7 @@ public:
 	RendererManager(const RendererManager&) = delete;
 	RendererManager& operator=(const RendererManager&) = delete;
 
-	void Update(const SM::Matrix& view, const SM::Matrix& proj);
+	void Update(const SM::Matrix& view, const SM::Matrix& proj, const SM::Vector3 camPos);
 
 	void Render(ID3D12GraphicsCommandList* cmdList);
 
@@ -27,6 +27,7 @@ private:
 
 	std::vector<std::unique_ptr<IRenderPass>> m_RenderPasses;
 
+	// Scene
 	ComPtr<ID3D12Resource> m_SceneColorTex;
 	ComPtr<ID3D12Resource> m_SceneDepthTex;
 
@@ -39,5 +40,16 @@ private:
 	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDepthSRVHandle;
 	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDSVHandle;
 
+	// Shadow
+	ComPtr<ID3D12Resource> m_ShadowMapTex;
+
+	ComPtr<ID3D12DescriptorHeap> m_ShadowDSVHeap;
+	ComPtr<ID3D12DescriptorHeap> m_ShadowSRVHeap;
+
+	D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowDSVHandle;
+	D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSRVHandle;
+
+	void CreateShadowResources(const RenderInitContext& ctx);
+	
 	void CreateSceneResources(const RenderInitContext& ctx);
 };

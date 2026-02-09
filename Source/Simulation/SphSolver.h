@@ -19,13 +19,13 @@ public:
 
 		SM::Vector2 BoxX = { -3.0f, 4.0f };
 		SM::Vector2 BoxY = { 0.0f, 4.0f };
-		SM::Vector2 BoxZ = { -1.5f, 2.0f };
+		SM::Vector2 BoxZ = { -2.0f, 2.0f };
 
-		float Epsilon = 30000.0f;
-		float K = 0.0000050f;
-		float N = 8.0f;
-		float DqScale = 0.2f;
-		float VorticityEpsilon = 0.000005f;
+		float Epsilon = 5000.0f;
+		float K = 0.000001f;
+		float N = 4.0f;
+		float DqScale = 0.1f;
+		float VorticityEpsilon = 0.000001f;
 		float ExternalAccel = 0.0f;
 	};
 
@@ -41,7 +41,7 @@ public:
 	ID3D12DescriptorHeap* GetSrvHeap() const { return m_SrvHeap.Get(); }
 	UINT GetNumParticles() const { return m_NumParticles; }
 	const SimParams& GetSimParams() const { return m_SimParams; }
-	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); } // Visualization용
+	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
 
 	void ToggleWallMovement() { m_WallMove = !m_WallMove; }
 
@@ -55,6 +55,10 @@ private:
 	float m_WallAmplitude = 2.0f;
 	int m_Iterations = 4;
 	bool m_Reset = false;
+
+	int m_X = 64;
+	int m_Y = 64;
+	int m_Z = 32;
 
 	// Data
 	SimParams m_SimParams;

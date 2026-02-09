@@ -223,11 +223,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 
 void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
-	int x_ = 64;
-	int y_ = 64;
-	int z_ = 32;
-
-	m_NumParticles = x_ * y_ * z_;
+	m_NumParticles = m_X * m_Y * m_Z;
 
 	m_Zero1.resize(m_NumParticles, 0.0f);
 	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
@@ -238,16 +234,16 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 	float widthY = m_SimParams.BoxY.x + m_SimParams.BoxY.y;
 	float widthZ = m_SimParams.BoxZ.x + m_SimParams.BoxZ.y;
 
-	float startX = widthX * 0.5f - spacing * x_ * 0.5f;
-	float startY = widthY * 0.5f - spacing * y_ * 0.5f;;
-	float startZ = widthZ * 0.5f - spacing * z_ * 0.5f;
+	float startX = widthX * 0.5f - spacing * m_X * 0.5f;
+	float startY = widthY * 0.5f - spacing * m_Y * 0.5f;;
+	float startZ = widthZ * 0.5f - spacing * m_Z * 0.5f;
 
 	m_InitPos.resize(m_NumParticles);
 
 	int idx = 0;
-	for (int z = 0; z < z_; z++)
-		for (int y = 0; y < y_; ++y)
-			for (int x = 0; x < x_; ++x)
+	for (int z = 0; z < m_Z; z++)
+		for (int y = 0; y < m_Y; ++y)
+			for (int x = 0; x < m_X; ++x)
 			{
 				m_InitPos[idx] = SM::Vector3(
 					startX + (x * spacing),
@@ -545,6 +541,7 @@ void SphSolver::OnGui()
 		ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1e6f, "%.0f");
 		ImGui::DragFloat("Tensile K", &m_SimParams.K, 1e-6f, 0.0f, 1.0f, "%.6f");
 		ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
+		ImGui::DragFloat("DqScale", &m_SimParams.DqScale, 0.1f, 0.0f, 1.0f);
 		ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
 	}
 }

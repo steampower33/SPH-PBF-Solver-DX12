@@ -1,13 +1,15 @@
-cbuffer Globals : register(b0)
+
+cbuffer Params : register(b0)
 {
     matrix g_View;
     matrix g_Proj;
-};
-
-cbuffer Params : register(b1)
-{
-    float g_Scale;
+    matrix g_ShadowTransform;
+    float3 g_LightPos;
+    float g_TileScale;
+    float3 g_LightDir;
     float g_TileCount;
+    float g_SpotAngleCos;
+    float3 g_pad;
 };
 
 struct VSInput
@@ -20,14 +22,16 @@ struct VSOutput
 {
     float4 Pos : SV_POSITION;
     float2 UV : TEXCOORD;
+    float3 PosW : POSITION;
 };
 
 VSOutput main(VSInput input)
 {
     VSOutput output;
     
-    output.Pos = mul(mul(float4(input.Pos * g_Scale, 1.0), g_View), g_Proj);
+    float4 posWorldScale = float4(input.Pos * g_TileScale, 1.0);
+    output.Pos = mul(mul(posWorldScale, g_View), g_Proj);
     output.UV = input.UV;
+    output.PosW = posWorldScale.xyz;
     return output;
-
 }
