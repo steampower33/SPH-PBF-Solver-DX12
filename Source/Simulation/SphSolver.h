@@ -2,16 +2,6 @@
 
 class ShaderHelper;
 
-struct Particle
-{
-	SM::Vector3 Position;
-	float Density;      // Align / Density
-	SM::Vector3 Velocity;
-	float Pressure;     // Align / Pressure
-	SM::Vector3 OldPosition;
-	float Padding;
-};
-
 class SphSolver
 {
 public:
@@ -32,43 +22,31 @@ public:
 		SM::Vector2 BoxZ = { -1.5f, 2.0f };
 
 		float Epsilon = 30000.0f;
-		float K = 0.0000050f; // Tensile K
-		float N = 8.0f;       // Tensile N
-		float DqScale = 0.2f; // Tensile dQ
+		float K = 0.0000050f;
+		float N = 8.0f;
+		float DqScale = 0.2f;
 		float VorticityEpsilon = 0.000005f;
 		float ExternalAccel = 0.0f;
 	};
 
 public:
-	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper);
-	void Update(ID3D12GraphicsCommandList* cmdList);
+	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps);
 
+	void UpdateInputs();
+	void Run(ID3D12GraphicsCommandList* cmdList);
 	void OnGui();
 
 	// [Getters]
-	ID3D12Resource* GetParticleBuffer() const { return m_ParticleBuffer.Get(); }
 	ID3D12DescriptorHeap* GetSrvHeap() const { return m_SrvHeap.Get(); }
 	UINT GetNumParticles() const { return m_NumParticles; }
 	const SimParams& GetSimParams() const { return m_SimParams; }
+	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); } // Visualization용
 
 	void ToggleWallMovement() { m_WallMove = !m_WallMove; }
 
 	int m_MaxSteps = 2;
 private:
-	std::wstring m_ShaderBaseName = L"./Shaders/Simulation/";
-
-	// Core Resources
-	SimParams m_SimParams;
-
-	ComPtr<ID3D12Resource> m_ParticleBuffer;
-	ComPtr<ID3D12Resource> m_UploadBuffer;
-
-	ComPtr<ID3D12DescriptorHeap> m_SrvHeap; // SRV (t0~)
-	ComPtr<ID3D12DescriptorHeap> m_UavHeap; // UAV (u0~)
-
-	UINT m_NumParticles = 0;
-
-	// Wall / Interaction State
+	// Simulation State
 	bool m_WallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
@@ -76,61 +54,87 @@ private:
 	float m_WallAmplitude = 2.0f;
 	int m_Iterations = 4;
 
-	void InitParticles(std::vector<Particle>& outParticles);
-	void CreateUavHeap(ID3D12Device* device);
+	enum HeapDescriptors
+	{
+		// [1] Main UAVs Solver
+		UAV_IDX_POS_PRED = 0, // u0
+		UAV_IDX_POS_OLD,
+		UAV_IDX_VEL_IN,
+		UAV_IDX_VEL_OUT,
+		UAV_IDX_DENSITY,
+		UAV_IDX_LAMBDA,
+		UAV_IDX_DELTAPOS,
+		UAV_IDX_VORTICITY,
+		UAV_IDX_GRID_INDICES,
+		UAV_IDX_SORTED_INDICES, // u8
 
-	// Integration & Compute Core
-	ComPtr<ID3D12RootSignature> m_ComputeRootSig;
-	ComPtr<ID3D12PipelineState> m_IntegrationPSO;
+		// [2] Temp UAVs
+		UAV_IDX_TEMP_POS,    // u0
+		UAV_IDX_TEMP_OLD,    // u1
+		UAV_IDX_TEMP_VEL,    // u2
 
-	void CreateComputeRootSignature(ID3D12Device* device);
-	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper);
+		// [3] Source SRVs
+		SRV_IDX_POS_PRED,    // t0
+		SRV_IDX_POS_OLD,     // t1
+		SRV_IDX_VEL_IN,      // t2
+		SRV_IDX_INDICES,     // t3
 
-	// Bitonic Sort
+		DESCRIPTOR_COUNT
+	};
+
 	struct SortConstants {
 		UINT BlockSize;
 		UINT Stride;
 		UINT Padding[2];
 	};
 
-	ComPtr<ID3D12RootSignature> m_SortRootSig;
-	ComPtr<ID3D12PipelineState> m_SortPSO;
+	// SoA Buffers
+	ComPtr<ID3D12Resource> m_PosPred;
+	ComPtr<ID3D12Resource> m_PosOld;
+	ComPtr<ID3D12Resource> m_VelIn;
+	ComPtr<ID3D12Resource> m_VelOut;
+	ComPtr<ID3D12Resource> m_Density;
+	ComPtr<ID3D12Resource> m_Lambda;
+	ComPtr<ID3D12Resource> m_DeltaPos;
+	ComPtr<ID3D12Resource> m_Vorticity;
+	ComPtr<ID3D12Resource> m_GridIndices;
 
-	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
-	void CreateSortRootSignature(ID3D12Device* device);
-	void CreateSortPSO(ID3D12Device* device, ShaderHelper* helper);
+	ComPtr<ID3D12Resource> m_TempPosPred;
+	ComPtr<ID3D12Resource> m_TempPosOld;
+	ComPtr<ID3D12Resource> m_TempVel;
+	ComPtr<ID3D12Resource> m_SortedIndices;
 
-	// Grid Construction (Spatial Hashing)
-	ComPtr<ID3D12Resource> m_GridIndicesBuffer;
-	ComPtr<ID3D12Resource> m_GridIndicesUpload;
+	UINT m_CbvSrvUavDescriptorSize = 0;
+	ComPtr<ID3D12DescriptorHeap> m_SrvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_UavHeap;
 
-	ComPtr<ID3D12RootSignature> m_GridMapRootSig;
+	SimParams m_SimParams;
+	UINT m_NumParticles = 0;
+
+	ComPtr<ID3D12RootSignature> m_GlobalRootSig;
+	ComPtr<ID3D12RootSignature> m_PermuteRootSig;
+
+	std::wstring m_ShaderBaseName = L"./Shaders/Simulation/";
+
+	ComPtr<ID3D12PipelineState> m_IntegrationPSO;
 	ComPtr<ID3D12PipelineState> m_ClearGridPSO;
 	ComPtr<ID3D12PipelineState> m_BuildGridPSO;
+	ComPtr<ID3D12PipelineState> m_SortPSO;
+	ComPtr<ID3D12PipelineState> m_PermuteDataPSO;
 
-	void CreateGridMapRootSignature(ID3D12Device* device);
-	void CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper);
-
-	// PBF Solver (Density, Lambda, Constraint, Vorticity)
-	// Buffers
-	ComPtr<ID3D12Resource> m_DensityBuffer;  ComPtr<ID3D12Resource> m_DensityUpload;
-	ComPtr<ID3D12Resource> m_LambdaBuffer;   ComPtr<ID3D12Resource> m_LambdaUpload;
-	ComPtr<ID3D12Resource> m_VorticityBuffer; ComPtr<ID3D12Resource> m_VorticityUpload;
-
-	// RootSignature (Shared for PBF steps)
-	ComPtr<ID3D12RootSignature> m_PbfSolverRootSig;
-
-	// PSOs
 	ComPtr<ID3D12PipelineState> m_DensityLambdaPSO;
 	ComPtr<ID3D12PipelineState> m_DeltaPosPSO;
 	ComPtr<ID3D12PipelineState> m_ConstraintPSO;
 	ComPtr<ID3D12PipelineState> m_VorticityPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
 
-	void CreatePbfSolverRootSignature(ID3D12Device* device);
-	void CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helper);
-	void CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper);
-	void CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper);
-	void CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper);
-	void CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper);
+	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
+
+	void CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers);
+	void CreateRenderSrvHeap(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList);
+	void CreateAllViews(ID3D12Device* device);
+	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
+		std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig);
+	void CreateGlobalRootSignature(ID3D12Device* device);
+	void CreatePermuteRootSignature(ID3D12Device* device);
 };

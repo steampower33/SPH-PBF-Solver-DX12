@@ -1,10 +1,5 @@
 #include "Common.hlsli"
 
-RWStructuredBuffer<Particle> g_Particles : register(u0);
-RWStructuredBuffer<uint2> g_GridIndices : register(u1);
-RWStructuredBuffer<float> g_Densities : register(u2);
-RWStructuredBuffer<float> g_Lambdas : register(u3);
-
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -12,12 +7,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= g_NumParticles)
         return;
 
-    float3 myPos = g_Particles[id].Position;
+    float3 myPos = g_PosPred[id];
     
     float h = g_CellSize;
     float hSq = h * h;
     
-    float density = g_Mass * Poly6Kernel(0.0, h);
+    float density = 0.0;
     float3 gradCiSum = float3(0, 0, 0);
     float sumGradCiSq = 0.0;
 
@@ -45,15 +40,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
                 for (uint j = cellRange.x; j < cellRange.y; ++j)
                 {
-                    float3 neighborPos = g_Particles[j].Position;
+                    float3 neighborPos = g_PosPred[j];
                     float3 rVec = myPos - neighborPos;
                     float rSq = dot(rVec, rVec);
 
-                    if (rSq < hSq && rSq > 1e-6)
+                    if (rSq < hSq)
                     {
                         density += Poly6Kernel(rSq, h) * g_Mass;
 
-                        if (id != j)
+                        if (id != j && rSq > 1e-6f)
                         {
                             float r = sqrt(rSq);
                             
@@ -80,9 +75,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
         lambda = -C / (sumGradCiSq + g_epsilon);
     }
 
-    g_Densities[id] = density;
-    g_Lambdas[id] = lambda;
-    
-    // [DEBUG]
-    g_Particles[id].Density = density;
+    g_Density[id] = density;
+    g_Lambda[id] = lambda;
 }

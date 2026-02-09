@@ -41,7 +41,7 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
         pass->Render(m_RenderContext);
 }
 
-void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver)
+void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
     m_RenderInitContext.Device = device;
     m_RenderInitContext.CmdList = cmdList;
@@ -59,7 +59,7 @@ void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList
     m_RenderPasses.emplace_back(std::make_unique<SSFRPass>()); // Render Last
 
     for (auto& pass : m_RenderPasses)
-        pass->Initialize(m_RenderInitContext);
+        pass->Initialize(m_RenderInitContext, uploadHeaps);
 }
 
 void RendererManager::OnGui()

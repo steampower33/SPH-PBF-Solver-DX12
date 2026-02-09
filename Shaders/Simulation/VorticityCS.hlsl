@@ -1,9 +1,5 @@
 #include "Common.hlsli"
 
-RWStructuredBuffer<Particle> g_Particles : register(u0);
-RWStructuredBuffer<uint2> g_GridIndices : register(u1);
-RWStructuredBuffer<float3> g_Vorticities : register(u4);
-
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -11,12 +7,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= g_NumParticles)
         return;
 
-    Particle p = g_Particles[id];
+    float3 pi = g_PosPred[id];
+    float3 vi = g_VelIn[id];
     float3 vorticity = float3(0, 0, 0);
 
     float h = g_CellSize;
     float hSq = h * h;
-    int3 myGridPos = (int3) floor(p.Position / h) + int3(1000, 1000, 1000);
+    int3 myGridPos = (int3) floor(pi / h) + int3(1000, 1000, 1000);
 
     for (int z = -1; z <= 1; ++z)
     {
@@ -36,15 +33,16 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     if (id == j)
                         continue;
 
-                    Particle pj = g_Particles[j];
-                    float3 rVec = p.Position - pj.Position;
+                    float3 pj = g_PosPred[j];
+                    float3 rVec = pi - pj;
                     float rSq = dot(rVec, rVec);
 
                     if (rSq < hSq && rSq > 1e-6f)
                     {
                         float r = sqrt(rSq);
+                        
                         // Eq (15): curl = Sum( v_ij x gradW )
-                        float3 v_ij = pj.Velocity - p.Velocity;
+                        float3 v_ij = g_VelIn[j] - vi;
                         float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
 
                         vorticity += cross(v_ij, gradW);
@@ -54,5 +52,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
     }
     
-    g_Vorticities[id] = vorticity;
+    g_Vorticity[id] = vorticity;
 }

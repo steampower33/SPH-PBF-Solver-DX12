@@ -35,8 +35,6 @@
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "dxcompiler.lib")
 
-#include "Helpers.h"
-
 using Microsoft::WRL::ComPtr;
 namespace DX = DirectX;
 
@@ -47,3 +45,5 @@ namespace SM = DirectX::SimpleMath;
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx12.h"
+
+#include "Helpers.h"

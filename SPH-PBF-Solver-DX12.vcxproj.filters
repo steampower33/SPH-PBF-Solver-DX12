@@ -232,5 +232,8 @@
     <FxCompile Include="Shaders\Rendering\PlaneVS.hlsl">
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Simulation\PermuteDataCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

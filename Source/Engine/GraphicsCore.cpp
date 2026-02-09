@@ -31,24 +31,6 @@ ID3D12GraphicsCommandList* GraphicsCore::BeginFrame()
 
 	m_CommandList->ResourceBarrier(1, &barrier);
 
-	//CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-	//	m_RtvHeap->GetCPUDescriptorHandleForHeapStart(),
-	//	m_FrameIndex,
-	//	m_RtvDescriptorSize);
-
-	//CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(
-	//	m_DsvHeap->GetCPUDescriptorHandleForHeapStart());
-
-	//m_CommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
-	//D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)m_Width, (float)m_Height, 0.0f, 1.0f };
-	//D3D12_RECT scissorRect = { 0, 0, (LONG)m_Width, (LONG)m_Height };
-	//m_CommandList->RSSetViewports(1, &viewport);
-	//m_CommandList->RSSetScissorRects(1, &scissorRect);
-
-	//m_CommandList->ClearRenderTargetView(rtvHandle, m_ClearColor, 0, nullptr);
-	//m_CommandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
 	return m_CommandList.Get();
 }
 
@@ -93,12 +75,15 @@ void GraphicsCore::WaitForGpu()
 {
 	if (m_CommandQueue && m_Fence && m_FenceEvent)
 	{
+		m_CurrentFenceValue++;
+
 		ThrowIfFailed(m_CommandQueue->Signal(m_Fence.Get(), m_CurrentFenceValue));
 
-		ThrowIfFailed(m_Fence->SetEventOnCompletion(m_CurrentFenceValue, m_FenceEvent));
-		WaitForSingleObject(m_FenceEvent, INFINITE);
-
-		m_CurrentFenceValue++;
+		if (m_Fence->GetCompletedValue() < m_CurrentFenceValue)
+		{
+			ThrowIfFailed(m_Fence->SetEventOnCompletion(m_CurrentFenceValue, m_FenceEvent));
+			WaitForSingleObject(m_FenceEvent, INFINITE);
+		}
 	}
 }
 

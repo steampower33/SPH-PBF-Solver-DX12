@@ -59,7 +59,7 @@ bool FluidSimApp::Run()
 			int steps = 0; 
 			while (timeAccumulator >= simDt && steps < maxSteps)
 			{
-				m_Solver.Update(cmdList);
+				m_Solver.Run(cmdList);
 				timeAccumulator -= simDt;
 				steps++;
 			}
@@ -199,12 +199,15 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 
 	m_GraphicsCore.Initialize(hWnd, m_Width, m_Height);
 	m_ShaderHelper.Initialize();
+	m_Camera.Initialize(m_AspectRatio);
 
-	ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
+	ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.GetCommandList();
+	cmdList->Reset(m_GraphicsCore.GetCommandAllocator(), nullptr);
 
-	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper);
+	std::vector<ComPtr<ID3D12Resource>> uploadHeaps;
+	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, uploadHeaps);
 
-	m_RendererManager.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore, &m_Solver);
+	m_RendererManager.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore, &m_Solver, uploadHeaps);
 
 	m_Gui.Initialize(
 		m_GraphicsCore.GetDevice(),
@@ -215,9 +218,11 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 		m_Height
 	);
 
-	m_GraphicsCore.EndFrame();
+	cmdList->Close();
+	ID3D12CommandList* lists[] = { cmdList };
+	m_GraphicsCore.GetCommandQueue()->ExecuteCommandLists(1, lists);
 
-	m_Camera.Initialize(m_AspectRatio);
+	m_GraphicsCore.WaitForGpu();
 }
 
 std::wstring FluidSimApp::GetLatestWinPixGpuCapturerPath()

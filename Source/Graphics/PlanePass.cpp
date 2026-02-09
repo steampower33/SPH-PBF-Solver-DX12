@@ -102,7 +102,7 @@ void PlanePass::CreatePSOs(const RenderInitContext& ctx)
 	}
 }
 
-void PlanePass::CreateResources(const RenderInitContext& ctx)
+void PlanePass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
 	auto device = ctx.Device;
 	auto cmdList = ctx.CmdList;
@@ -121,8 +121,8 @@ void PlanePass::CreateResources(const RenderInitContext& ctx)
 		const UINT vbByteSize = sizeof(quadVertices);
 		const UINT ibByteSize = sizeof(quadIndices);
 
-		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, m_QuadVBUpload);
-		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, m_QuadIBUpload);
+		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, uploadHeaps);
+		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, uploadHeaps);
 
 		m_QuadVBView.BufferLocation = m_QuadVB->GetGPUVirtualAddress();
 		m_QuadVBView.StrideInBytes = sizeof(Vertex);

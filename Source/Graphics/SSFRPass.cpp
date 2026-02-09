@@ -326,7 +326,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
         params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
         CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
         params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
 
         CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
@@ -512,7 +512,7 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
     }
 }
 
-void SSFRPass::CreateResources(const RenderInitContext& ctx)
+void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
 	auto device = ctx.Device;
 	auto cmdList = ctx.CmdList;
@@ -531,8 +531,8 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx)
 		const UINT vbByteSize = sizeof(quadVertices);
 		const UINT ibByteSize = sizeof(quadIndices);
 
-		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, m_QuadVBUpload);
-		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, m_QuadIBUpload);
+		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, uploadHeaps);
+		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, uploadHeaps);
 
 		m_QuadVBView.BufferLocation = m_QuadVB->GetGPUVirtualAddress();
 		m_QuadVBView.StrideInBytes = sizeof(Vertex);

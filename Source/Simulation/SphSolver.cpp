@@ -2,7 +2,7 @@
 
 #include "SphSolver.h"
 
-void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
+void SphSolver::UpdateInputs()
 {
 	float pushStrength = 5.0f;
 
@@ -15,207 +15,190 @@ void SphSolver::Update(ID3D12GraphicsCommandList* cmdList)
 		m_SimParams.ExternalAccel = 0.0f;
 	}
 
-	auto barrierToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_ParticleBuffer.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	cmdList->ResourceBarrier(1, &barrierToUAV);
-
 	if (m_WallMove)
 	{
 		m_TotalTime += m_SimParams.DeltaTime;
 		float animationFactor = 0.5f * (1.0f - cosf(m_TotalTime * m_WallSpeed));
 		m_SimParams.BoxX.x = m_OriginMinX + (m_WallAmplitude * animationFactor);
 	}
+}
+
+void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
+{
+	UpdateInputs();
+
+	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
 
 	ID3D12DescriptorHeap* heaps[] = { m_UavHeap.Get() };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+	cmdList->SetComputeRootDescriptorTable(2, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+
 	UINT groups = (m_NumParticles + 255) / 256;
 
-	cmdList->SetPipelineState(m_IntegrationPSO.Get());
-	cmdList->SetComputeRootSignature(m_ComputeRootSig.Get());
-	cmdList->SetDescriptorHeaps(1, heaps);
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRootDescriptorTable(1, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-	cmdList->Dispatch(groups, 1, 1);
+	// Barriers
+	auto posPredBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get());
 
-	auto uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_ParticleBuffer.Get());
-	cmdList->ResourceBarrier(1, &uavBarrier);
-
-	RunBitonicSort(cmdList);
-
-	cmdList->SetComputeRootSignature(m_GridMapRootSig.Get());
-	cmdList->SetDescriptorHeaps(1, heaps);
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRootDescriptorTable(1, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-
-	cmdList->SetPipelineState(m_ClearGridPSO.Get());
-	UINT numGridCells = m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim;
-	UINT gridGroups = (numGridCells + 255) / 256;
-	cmdList->Dispatch(gridGroups, 1, 1);
-
-	auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndicesBuffer.Get());
-	cmdList->ResourceBarrier(1, &gridBarrier);
-
-	cmdList->SetPipelineState(m_BuildGridPSO.Get());
-	cmdList->Dispatch(groups, 1, 1);
-	cmdList->ResourceBarrier(1, &gridBarrier);
-
-	cmdList->SetComputeRootSignature(m_PbfSolverRootSig.Get());
-	cmdList->SetDescriptorHeaps(1, heaps);
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRootDescriptorTable(1, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-
-	auto posBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_ParticleBuffer.Get());
-
-	for (int iter = 0; iter < m_Iterations; ++iter)
+	// [1] Integration Pass
 	{
-		cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
+		cmdList->SetPipelineState(m_IntegrationPSO.Get());
+
 		cmdList->Dispatch(groups, 1, 1);
 
-		CD3DX12_RESOURCE_BARRIER barriers[] = {
-			CD3DX12_RESOURCE_BARRIER::UAV(m_DensityBuffer.Get()),
-			CD3DX12_RESOURCE_BARRIER::UAV(m_LambdaBuffer.Get())
-		};
-		cmdList->ResourceBarrier(2, barriers);
-
-		cmdList->SetPipelineState(m_DeltaPosPSO.Get());
-		cmdList->Dispatch(groups, 1, 1);
-		cmdList->ResourceBarrier(1, &posBarrier);
-
-		cmdList->SetPipelineState(m_ConstraintPSO.Get());
-		cmdList->Dispatch(groups, 1, 1);
-		cmdList->ResourceBarrier(1, &posBarrier);
+		cmdList->ResourceBarrier(1, &posPredBarrier);
 	}
 
-	auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VorticityBuffer.Get());
+	// [2] Sort Pass
+	{
+		RunBitonicSort(cmdList);
+	}
+
+	// [3] Permute Pass (Data Reordering)
+	{
+		auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
+
+		cmdList->SetComputeRootSignature(m_PermuteRootSig.Get());
+		cmdList->SetPipelineState(m_PermuteDataPSO.Get());
+
+		cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+
+		// UAV Table (Param 1) -> u0~u2 (Temp Buffers)
+		CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+		uavHandle.Offset(UAV_IDX_TEMP_POS, m_CbvSrvUavDescriptorSize);
+		cmdList->SetComputeRootDescriptorTable(1, uavHandle);
+
+		// SRV Table (Param 2) -> t0~t3 (Source)
+		CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+		srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
+		cmdList->SetComputeRootDescriptorTable(2, srvHandle);
+
+		cmdList->Dispatch(groups, 1, 1);
+
+		auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
+	}
+
+	// [4] Copy Back
+	{
+		CD3DX12_RESOURCE_BARRIER barriers[] = {
+			// Temp (UAV -> Source)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			// Main (UAV -> Dest)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+		};
+		cmdList->ResourceBarrier(6, barriers);
+
+		cmdList->CopyResource(m_PosPred.Get(), m_TempPosPred.Get());
+		cmdList->CopyResource(m_PosOld.Get(), m_TempPosOld.Get());
+		cmdList->CopyResource(m_VelIn.Get(), m_TempVel.Get());
+
+		CD3DX12_RESOURCE_BARRIER restoreBarriers[] = {
+			// Main: Dest -> UAV
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),  D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),   D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+
+			// Temp: Source -> UAV
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+		};
+		cmdList->ResourceBarrier(6, restoreBarriers);
+	}
+
+	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
+
+	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+	cmdList->SetComputeRootDescriptorTable(2, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+
+	// [5] Grid Pass
+	{
+		cmdList->SetPipelineState(m_ClearGridPSO.Get());
+
+		UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
+		cmdList->Dispatch(gridGroups, 1, 1);
+
+		auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndices.Get());
+		cmdList->ResourceBarrier(1, &gridBarrier);
+
+		cmdList->SetPipelineState(m_BuildGridPSO.Get());
+		cmdList->Dispatch(groups, 1, 1);
+
+		cmdList->ResourceBarrier(1, &gridBarrier);
+	}
+
+	// [5] Solver Iteration
+	{
+		CD3DX12_RESOURCE_BARRIER DensityLambda[] = {
+			CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get()),
+			CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get())
+		};
+
+		CD3DX12_RESOURCE_BARRIER PredDelta[] = {
+			CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get()),
+			CD3DX12_RESOURCE_BARRIER::UAV(m_DeltaPos.Get())
+		};
+
+		for (int iter = 0; iter < m_Iterations; ++iter)
+		{
+			// Density & Lambda
+			cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
+			cmdList->Dispatch(groups, 1, 1);
+
+			cmdList->ResourceBarrier(2, DensityLambda);
+
+			// Delta Pos
+			cmdList->SetPipelineState(m_DeltaPosPSO.Get());
+			cmdList->Dispatch(groups, 1, 1);
+
+			cmdList->ResourceBarrier(2, PredDelta);
+
+			// Constraint Apply
+			cmdList->SetPipelineState(m_ConstraintPSO.Get());
+			cmdList->Dispatch(groups, 1, 1);
+
+			cmdList->ResourceBarrier(1, &posPredBarrier);
+		}
+	}
+
 	cmdList->SetPipelineState(m_VorticityPSO.Get());
 	cmdList->Dispatch(groups, 1, 1);
+
+	auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
 	cmdList->ResourceBarrier(1, &vorticityBarrier);
 
 	cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
 	cmdList->Dispatch(groups, 1, 1);
 
-	auto barrierToSRV = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_ParticleBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-		D3D12_RESOURCE_STATE_GENERIC_READ);
-	cmdList->ResourceBarrier(1, &barrierToSRV);
+	auto velOutBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
+	cmdList->ResourceBarrier(1, &velOutBarrier);
 }
 
-void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper)
+void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
-	std::vector<Particle> particles(m_NumParticles);
-	InitParticles(particles);
+	CreateBuffers(device, cmdList, uploadHeaps);
+	CreateRenderSrvHeap(device, cmdList);
+	CreateAllViews(device);
+	CreateGlobalRootSignature(device);
+	CreatePermuteRootSignature(device);
 
-	m_NumParticles = particles.size();
+	CreateComputePSO(device, shaderHelper, L"IntegrationCS.hlsl", m_IntegrationPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"BitonicSortCS.hlsl", m_SortPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"PermuteDataCS.hlsl", m_PermuteDataPSO, m_PermuteRootSig);
+	CreateComputePSO(device, shaderHelper, L"ClearGridIndicesCS.hlsl", m_ClearGridPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"BuildGridIndicesCS.hlsl", m_BuildGridPSO, m_GlobalRootSig);
 
-	UINT64 bufferSize = sizeof(Particle) * m_NumParticles;
-
-	m_ParticleBuffer = Helpers::CreateDefaultBuffer(
-		device,
-		cmdList,
-		particles.data(),
-		bufferSize,
-		m_UploadBuffer,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-	);
-	Helpers::SetDebugName(m_ParticleBuffer.Get(), "m_ParticleBuffer");
-
-	UINT gridDim = m_SimParams.GridDim;
-	UINT numGridCells = gridDim * gridDim * gridDim;
-	UINT64 gridBufferSize = numGridCells * sizeof(UINT) * 2;
-
-	m_GridIndicesBuffer = Helpers::CreateDefaultBuffer(
-		device, cmdList, nullptr, gridBufferSize, m_GridIndicesUpload,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
-	);
-	Helpers::SetDebugName(m_GridIndicesBuffer.Get(), "m_GridIndicesBuffer");
-
-	UINT64 floatBufferSize = m_NumParticles * sizeof(float);
-
-	m_DensityBuffer = Helpers::CreateDefaultBuffer(
-		device, cmdList, nullptr, floatBufferSize, m_DensityUpload,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	Helpers::SetDebugName(m_DensityBuffer.Get(), "m_DensityBuffer");
-
-	m_LambdaBuffer = Helpers::CreateDefaultBuffer(
-		device, cmdList, nullptr, floatBufferSize, m_LambdaUpload,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	Helpers::SetDebugName(m_LambdaBuffer.Get(), "m_LambdaBuffer");
-
-	UINT64 float3BufferSize = m_NumParticles * sizeof(float) * 3;
-
-	m_VorticityBuffer = Helpers::CreateDefaultBuffer(
-		device, cmdList, nullptr, float3BufferSize, m_VorticityUpload,
-		D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-	Helpers::SetDebugName(m_VorticityBuffer.Get(), "m_VorticityBuffer");
-
-	// Create SRV Heap
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-		heapDesc.NumDescriptors = 1;
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_SrvHeap)));
-		Helpers::SetDebugName(m_SrvHeap.Get(), "Heap_SRV_Particles");
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-		srvDesc.Buffer.FirstElement = 0;
-		srvDesc.Buffer.NumElements = m_NumParticles;
-		srvDesc.Buffer.StructureByteStride = sizeof(Particle);
-		device->CreateShaderResourceView(m_ParticleBuffer.Get(), &srvDesc, m_SrvHeap->GetCPUDescriptorHandleForHeapStart());
-	}
-
-	CreateUavHeap(device);
-
-	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE handle(m_UavHeap->GetCPUDescriptorHandleForHeapStart());
-		UINT incSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-		// u0 : Particles
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDescParticles = {};
-		uavDescParticles.Format = DXGI_FORMAT_UNKNOWN;
-		uavDescParticles.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-		uavDescParticles.Buffer.FirstElement = 0;
-		uavDescParticles.Buffer.NumElements = m_NumParticles;
-		uavDescParticles.Buffer.StructureByteStride = sizeof(Particle);
-
-		device->CreateUnorderedAccessView(m_ParticleBuffer.Get(), nullptr, &uavDescParticles, handle);
-
-		// u1 : GridIndices
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDescGrid = {};
-		uavDescGrid.Format = DXGI_FORMAT_UNKNOWN;
-		uavDescGrid.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-		uavDescGrid.Buffer.FirstElement = 0;
-		uavDescGrid.Buffer.NumElements = numGridCells;
-		uavDescGrid.Buffer.StructureByteStride = sizeof(UINT) * 2; // uint2
-
-		handle.Offset(1, incSize);
-		device->CreateUnorderedAccessView(m_GridIndicesBuffer.Get(), nullptr, &uavDescGrid, handle);
-
-		// u2: Density
-		handle.Offset(1, incSize);
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDescFloat = {};
-		uavDescFloat.Format = DXGI_FORMAT_UNKNOWN; // StructuredBuffer<float>
-		uavDescFloat.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-		uavDescFloat.Buffer.NumElements = m_NumParticles;
-		uavDescFloat.Buffer.StructureByteStride = sizeof(float);
-		device->CreateUnorderedAccessView(m_DensityBuffer.Get(), nullptr, &uavDescFloat, handle);
-
-		// u3: Lambda
-		handle.Offset(1, incSize);
-		device->CreateUnorderedAccessView(m_LambdaBuffer.Get(), nullptr, &uavDescFloat, handle);
-
-		// u4: Vorticity
-		handle.Offset(1, incSize);
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDescFloat3 = {};
-		uavDescFloat3.Format = DXGI_FORMAT_UNKNOWN; // StructuredBuffer<float3>
-		uavDescFloat3.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-		uavDescFloat3.Buffer.NumElements = m_NumParticles;
-		uavDescFloat3.Buffer.StructureByteStride = sizeof(float) * 3;
-		device->CreateUnorderedAccessView(m_VorticityBuffer.Get(), nullptr, &uavDescFloat3, handle);
-	}
-
+	CreateComputePSO(device, shaderHelper, L"DensityLambdaCS.hlsl", m_DensityLambdaPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"DeltaPosCS.hlsl", m_DeltaPosPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"ConstraintCS.hlsl", m_ConstraintPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"VorticityCS.hlsl", m_VorticityPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"UpdateVelocityCS.hlsl", m_UpdateVelocityPSO, m_GlobalRootSig);
 
 	{
 		m_SimParams.NumParticles = m_NumParticles;
@@ -223,78 +206,22 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 
 		m_OriginMinX = m_SimParams.BoxX.x;
 	}
-
-	CreateComputeRootSignature(device);
-	CreateComputePSO(device, shaderHelper);
-
-	CreateSortRootSignature(device);
-	CreateSortPSO(device, shaderHelper);
-
-	CreateGridMapRootSignature(device);
-	CreateGridMapPSO(device, shaderHelper);
-
-	CreatePbfSolverRootSignature(device);
-	CreateDensityLambdaPSO(device, shaderHelper);
-	CreateDeltaPosPSO(device, shaderHelper);
-
-	CreateConstraintPSO(device, shaderHelper);
-	CreateVorticityPSO(device, shaderHelper);
-	CreateUpdateVelocityPSO(device, shaderHelper);
 }
 
-void SphSolver::CreateUavHeap(ID3D12Device* device)
+void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
-	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-	heapDesc.NumDescriptors = 5;
-	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_UavHeap)));
-	Helpers::SetDebugName(m_UavHeap.Get(), "Heap_UAV_Particles");
-}
-
-void SphSolver::CreateComputeRootSignature(ID3D12Device* device)
-{
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-	rootParameters[0].InitAsConstants(sizeof(SimParams) / 4, 0);
-
-	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	rootParameters[1].InitAsDescriptorTable(1, &uavRange);
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-	rootSigDesc.Init_1_1(_countof(rootParameters), rootParameters);
-
-	ComPtr<ID3DBlob> signatureBlob, errorBlob;
-	HRESULT hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob);
-
-	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
-
-	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_ComputeRootSig)));
-	Helpers::SetDebugName(m_ComputeRootSig.Get(), "m_ComputeRootSig");
-}
-
-void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* shaderHelper)
-{
-	ComPtr<IDxcBlob> csBlob = shaderHelper->Compile(
-		m_ShaderBaseName, L"IntegrationCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_ComputeRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_IntegrationPSO)));
-	Helpers::SetDebugName(m_IntegrationPSO.Get(), "m_IntegrationPSO");
-}
-
-void SphSolver::InitParticles(std::vector<Particle>& outParticles)
-{
-	outParticles.clear();
-
-	float spacing = m_SimParams.CellSize * 0.5f;
-
 	int x_ = 64;
 	int y_ = 64;
-	int z_ = 32;
+	int z_ = 64;
+
+	m_NumParticles = x_ * y_ * z_;
+
+	std::vector<SM::Vector3> initPos(m_NumParticles);
+
+	std::vector<float>		 initZero1(m_NumParticles, 0.0f);
+	std::vector<SM::Vector3> initZero3(m_NumParticles, SM::Vector3(0.0f));
+
+	float spacing = m_SimParams.CellSize * 0.5f;
 
 	float widthX = m_SimParams.BoxX.x + m_SimParams.BoxX.y;
 	float widthY = m_SimParams.BoxY.x + m_SimParams.BoxY.y;
@@ -304,229 +231,250 @@ void SphSolver::InitParticles(std::vector<Particle>& outParticles)
 	float startY = widthY * 0.5f - spacing * y_ * 0.5f;;
 	float startZ = widthZ * 0.5f - spacing * z_ * 0.5f;
 
+	int idx = 0;
 	for (int z = 0; z < z_; z++)
 		for (int y = 0; y < y_; ++y)
 			for (int x = 0; x < x_; ++x)
 			{
-				Particle p = {};
-
-				p.Position.x = startX + (x * spacing);
-				p.Position.y = startY + (y * spacing);
-				p.Position.z = startZ + (z * spacing);
-
-				p.Velocity = SM::Vector3(0, 0, 0);
-				p.Density = 0.0f;
-				p.Pressure = 0.0f;
-				p.OldPosition = p.Position;
-
-				outParticles.push_back(p);
+				initPos[idx] = SM::Vector3(
+					startX + (x * spacing),
+					startY + (y * spacing),
+					startZ + (z * spacing));
+				idx++;
 			}
 
+	UINT64 sizeVec3 = m_NumParticles * sizeof(SM::Vector3);
+	UINT64 sizeFloat = m_NumParticles * sizeof(float);
+
+	auto CreateAndTrackBuffer = [&](
+		const void* initData,
+		UINT64 byteSize,
+		ComPtr<ID3D12Resource>& outDefaultBuffer,
+		const char* debugName)
+		{
+			outDefaultBuffer = Helpers::CreateDefaultBuffer(
+				device, cmdList,
+				initData, byteSize,
+				tempUploadBuffers,
+				D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS
+			);
+		};
+
+	UINT numGridCells = m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim;
+
+	CreateAndTrackBuffer(initPos.data(), sizeVec3, m_PosPred, "Pos_Pred");
+	CreateAndTrackBuffer(initPos.data(), sizeVec3, m_PosOld, "Pos_Old");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_VelIn, "Vel_In");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_VelOut, "Vel_Out");
+	CreateAndTrackBuffer(initZero1.data(), sizeFloat, m_Density, "Density");
+	CreateAndTrackBuffer(initZero1.data(), sizeFloat, m_Lambda, "Lambda");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_DeltaPos, "DeltaPos");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_Vorticity, "Vorticity");
+	CreateAndTrackBuffer(nullptr, numGridCells * sizeof(UINT) * 2, m_GridIndices, "GridIndices");
+
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempPosPred, "m_TempPosPred");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempPosOld, "m_TempPosOld");
+	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempVel, "m_TempVel");
+
+	std::vector<UINT> indices(m_NumParticles);
+	for (UINT i = 0; i < m_NumParticles; ++i)
+	{
+		indices[i] = i;
+	}
+	CreateAndTrackBuffer(indices.data(), m_NumParticles * sizeof(UINT), m_SortedIndices, "m_SortedIndices");
 }
 
-void SphSolver::CreateSortRootSignature(ID3D12Device* device)
+void SphSolver::CreateRenderSrvHeap(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList)
 {
-	// Just a simple RootSig with 1 ConstantBuffer (b0) and 1 UAV Table (u0)
-	CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+	heapDesc.NumDescriptors = 2;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_SrvHeap)));
+	Helpers::SetDebugName(m_SrvHeap.Get(), "Heap_SRV_Particles");
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hHandle(m_SrvHeap->GetCPUDescriptorHandleForHeapStart());
+	m_CbvSrvUavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	auto CreateBufferSRV = [&](ID3D12Resource* pBuffer, int heapIdx, UINT stride) {
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Buffer.FirstElement = 0;
+		srvDesc.Buffer.NumElements = m_NumParticles;
+		srvDesc.Buffer.StructureByteStride = stride;
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = hHandle;
+		handle.Offset(heapIdx, m_CbvSrvUavDescriptorSize);
+		device->CreateShaderResourceView(pBuffer, &srvDesc, handle);
+		};
+
+	CreateBufferSRV(m_PosPred.Get(), 0, sizeof(SM::Vector3));
+	CreateBufferSRV(m_Density.Get(), 1, sizeof(float));
+}
+
+void SphSolver::CreateAllViews(ID3D12Device* device)
+{
+	// Create Heap
+	D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+	heapDesc.NumDescriptors = HeapDescriptors::DESCRIPTOR_COUNT;
+	heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_UavHeap)));
+	Helpers::SetDebugName(m_UavHeap.Get(), "Heap_UAV_SoA");
+
+	m_CbvSrvUavDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hHandle(m_UavHeap->GetCPUDescriptorHandleForHeapStart());
+
+	UINT sizeVec3 = sizeof(SM::Vector3);
+	UINT sizeFloat = sizeof(float);
+	UINT numGridCells = m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim;
+
+	// Create UAV
+	auto CreateBufferUAV = [&](ID3D12Resource* pBuffer, UINT numElements, UINT stride, int heapIdx)
+		{
+			D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+			uavDesc.Format = DXGI_FORMAT_UNKNOWN;
+			uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+			uavDesc.Buffer.FirstElement = 0;
+			uavDesc.Buffer.NumElements = numElements;
+			uavDesc.Buffer.StructureByteStride = stride;
+			uavDesc.Buffer.CounterOffsetInBytes = 0;
+			uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE handle = hHandle;
+			handle.Offset(heapIdx, m_CbvSrvUavDescriptorSize);
+
+			device->CreateUnorderedAccessView(pBuffer, nullptr, &uavDesc, handle);
+		};
+
+	CreateBufferUAV(m_PosPred.Get(), m_NumParticles, sizeVec3, UAV_IDX_POS_PRED);
+	CreateBufferUAV(m_PosOld.Get(), m_NumParticles, sizeVec3, UAV_IDX_POS_OLD);
+	CreateBufferUAV(m_VelIn.Get(), m_NumParticles, sizeVec3, UAV_IDX_VEL_IN);
+	CreateBufferUAV(m_VelOut.Get(), m_NumParticles, sizeVec3, UAV_IDX_VEL_OUT);
+	CreateBufferUAV(m_Density.Get(), m_NumParticles, sizeof(float), UAV_IDX_DENSITY);
+	CreateBufferUAV(m_Lambda.Get(), m_NumParticles, sizeof(float), UAV_IDX_LAMBDA);
+	CreateBufferUAV(m_DeltaPos.Get(), m_NumParticles, sizeVec3, UAV_IDX_DELTAPOS);
+	CreateBufferUAV(m_Vorticity.Get(), m_NumParticles, sizeVec3, UAV_IDX_VORTICITY);
+	CreateBufferUAV(m_GridIndices.Get(), numGridCells, sizeof(UINT) * 2, UAV_IDX_GRID_INDICES);
+	CreateBufferUAV(m_SortedIndices.Get(), m_NumParticles, sizeof(UINT), UAV_IDX_SORTED_INDICES);
+
+	CreateBufferUAV(m_TempPosPred.Get(), m_NumParticles, sizeof(SM::Vector3), UAV_IDX_TEMP_POS);
+	CreateBufferUAV(m_TempPosOld.Get(), m_NumParticles, sizeof(SM::Vector3), UAV_IDX_TEMP_OLD);
+	CreateBufferUAV(m_TempVel.Get(), m_NumParticles, sizeof(SM::Vector3), UAV_IDX_TEMP_VEL);
+
+	// Create SRV
+	auto CreateBufferSRV = [&](ID3D12Resource* pBuffer, int heapIdx) {
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Buffer.NumElements = m_NumParticles;
+		srvDesc.Buffer.StructureByteStride = sizeof(SM::Vector3);
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = hHandle;
+		handle.Offset(heapIdx, m_CbvSrvUavDescriptorSize);
+		device->CreateShaderResourceView(pBuffer, &srvDesc, handle);
+		};
+
+	CreateBufferSRV(m_PosPred.Get(), SRV_IDX_POS_PRED); // t0
+	CreateBufferSRV(m_PosOld.Get(), SRV_IDX_POS_OLD);  // t1
+	CreateBufferSRV(m_VelIn.Get(), SRV_IDX_VEL_IN);   // t2
+
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Buffer.NumElements = m_NumParticles;
+		srvDesc.Buffer.StructureByteStride = sizeof(UINT);
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE handle = hHandle;
+		handle.Offset(SRV_IDX_INDICES, m_CbvSrvUavDescriptorSize);
+		device->CreateShaderResourceView(m_SortedIndices.Get(), &srvDesc, handle);
+	}
+}
+
+void SphSolver::CreateGlobalRootSignature(ID3D12Device* device)
+{
+	CD3DX12_ROOT_PARAMETER1 rootParameters[4];
+
 	rootParameters[0].InitAsConstants(sizeof(SimParams) / 4, 0);
-	rootParameters[1].InitAsConstants(sizeof(SortConstants) / 4, 1); // b1: SortConstants
+	rootParameters[1].InitAsConstants(sizeof(SortConstants) / 4, 1);
 
 	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	rootParameters[2].InitAsDescriptorTable(1, &uavRange); // u0: Particle Buffer
+	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 10, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	rootParameters[2].InitAsDescriptorTable(1, &uavRange);
+
+	CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE); // t0 ~ t3
+	rootParameters[3].InitAsDescriptorTable(1, &srvRange);
+
+	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
+	rootSigDesc.Init_1_1(_countof(rootParameters), rootParameters);
+	ComPtr<ID3DBlob> signatureBlob, errorBlob;
+	HRESULT hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob);
+
+	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
+
+	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_GlobalRootSig)));
+	Helpers::SetDebugName(m_GlobalRootSig.Get(), "m_GlobalRootSig");
+}
+
+void SphSolver::CreatePermuteRootSignature(ID3D12Device* device)
+{
+	CD3DX12_ROOT_PARAMETER1 rootParameters[3];
+	rootParameters[0].InitAsConstants(sizeof(SimParams) / 4, 0);
+
+	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
+	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 3, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	rootParameters[1].InitAsDescriptorTable(1, &uavRange);
+
+	CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	rootParameters[2].InitAsDescriptorTable(1, &srvRange);
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
 	rootSigDesc.Init_1_1(_countof(rootParameters), rootParameters);
 
 	ComPtr<ID3DBlob> signatureBlob, errorBlob;
 	HRESULT hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob);
-
 	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
 
-	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_SortRootSig)));
-	Helpers::SetDebugName(m_SortRootSig.Get(), "m_SortRootSig");
+	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_PermuteRootSig)));
+	Helpers::SetDebugName(m_PermuteRootSig.Get(), "m_PermuteRootSig");
 }
 
-void SphSolver::CreateSortPSO(ID3D12Device* device, ShaderHelper* helper)
+void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
+	std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"BitonicSortCS.hlsl", L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, shaderFile, L"main", L"cs_6_0");
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_SortRootSig.Get();
+	psoDesc.pRootSignature = sig.Get();
 	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
 
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_SortPSO)));
-	Helpers::SetDebugName(m_SortPSO.Get(), "m_SortPSO");
+	device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&outPSO));
 }
 
-// [CORE LOOP] This runs on CPU to schedule GPU work
 void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 {
-	// 1. Setup Pipeline
 	cmdList->SetPipelineState(m_SortPSO.Get());
-	cmdList->SetComputeRootSignature(m_SortRootSig.Get());
 
-	ID3D12DescriptorHeap* heaps[] = { m_UavHeap.Get() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-
-	cmdList->SetComputeRootDescriptorTable(2, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-
-	// 2. Bitonic Sort Algorithm
-	// Iterate over 'Block Size' (2, 4, 8, ... N)
-	// NumParticles MUST be a Power of 2 (e.g., 1024, 2048) for this to work simply.
-	// If m_NumParticles is not POT, we need to pad it, but for now let's assume POT.
+	UINT groups = (m_NumParticles + 255) / 256;
 	for (UINT blockSize = 2; blockSize <= m_NumParticles; blockSize <<= 1) {
-		// Iterate over 'Stride' (BlockSize/2 down to 1)
 		for (UINT stride = blockSize >> 1; stride > 0; stride >>= 1) {
-
 			SortConstants sortConsts = { blockSize, stride, 0, 0 };
 
-			// Bind SortConstants (b1) at RootParam 1
 			cmdList->SetComputeRoot32BitConstants(1, 4, &sortConsts, 0);
 
-			// Dispatch
-			// ThreadGroupSize = 256
-			// We need 1 thread per particle? No, 1 thread usually handles 1 comparison (2 particles).
-			// But for simplicity in shader, let's say 1 thread = 1 particle logic.
-			UINT groups = (m_NumParticles + 255) / 256;
 			cmdList->Dispatch(groups, 1, 1);
 
-			// Barrier: We must wait for the swap to finish before the next step
-			auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_ParticleBuffer.Get());
+			auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_SortedIndices.Get());
 			cmdList->ResourceBarrier(1, &barrier);
 		}
 	}
-}
-
-void SphSolver::CreateGridMapRootSignature(ID3D12Device* device)
-{
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-	rootParameters[0].InitAsConstants(sizeof(SimParams) / 4, 0);
-
-	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	rootParameters[1].InitAsDescriptorTable(1, &uavRange);
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-	rootSigDesc.Init_1_1(_countof(rootParameters), rootParameters);
-
-	ComPtr<ID3DBlob> signatureBlob, errorBlob;
-	HRESULT hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob);
-
-	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
-
-	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_GridMapRootSig)));
-	Helpers::SetDebugName(m_GridMapRootSig.Get(), "m_GridMapRootSig");
-}
-
-void SphSolver::CreateGridMapPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	{
-		ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"ClearGridIndicesCS.hlsl", L"main", L"cs_6_0");
-
-		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-		psoDesc.pRootSignature = m_GridMapRootSig.Get();
-		psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-		ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_ClearGridPSO)));
-		Helpers::SetDebugName(m_ClearGridPSO.Get(), "m_ClearGridPSO");
-	}
-
-	{
-		ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"BuildGridIndicesCS.hlsl", L"main", L"cs_6_0");
-
-		D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-		psoDesc.pRootSignature = m_GridMapRootSig.Get();
-		psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-		ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_BuildGridPSO)));
-		Helpers::SetDebugName(m_BuildGridPSO.Get(), "m_BuildGridPSO");
-	}
-}
-
-void SphSolver::CreatePbfSolverRootSignature(ID3D12Device* device)
-{
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-	rootParameters[0].InitAsConstants(sizeof(SimParams) / 4, 0); // b0
-
-	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 5, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-	rootParameters[1].InitAsDescriptorTable(1, &uavRange);
-
-	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSigDesc;
-	rootSigDesc.Init_1_1(_countof(rootParameters), rootParameters);
-
-	ComPtr<ID3DBlob> signatureBlob, errorBlob;
-	HRESULT hr = D3DX12SerializeVersionedRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob);
-
-	if (FAILED(hr)) { OutputDebugStringA((char*)errorBlob->GetBufferPointer()); ThrowIfFailed(hr); }
-
-	ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&m_PbfSolverRootSig)));
-	Helpers::SetDebugName(m_PbfSolverRootSig.Get(), "m_PbfSolverRootSig");
-}
-
-void SphSolver::CreateDensityLambdaPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"DensityLambdaCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_DensityLambdaPSO)));
-	Helpers::SetDebugName(m_DensityLambdaPSO.Get(), "m_DensityLambdaPSO");
-}
-
-void SphSolver::CreateDeltaPosPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"DeltaPosCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_DeltaPosPSO)));
-	Helpers::SetDebugName(m_DeltaPosPSO.Get(), "m_DeltaPosPSO");
-}
-
-void SphSolver::CreateConstraintPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"ConstraintCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_ConstraintPSO)));
-	Helpers::SetDebugName(m_ConstraintPSO.Get(), "m_ConstraintPSO");
-}
-
-void SphSolver::CreateVorticityPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"VorticityCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_VorticityPSO)));
-	Helpers::SetDebugName(m_VorticityPSO.Get(), "m_VorticityPSO");
-}
-
-void SphSolver::CreateUpdateVelocityPSO(ID3D12Device* device, ShaderHelper* helper)
-{
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, L"UpdateVelocityCS.hlsl", L"main", L"cs_6_0");
-
-	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.pRootSignature = m_PbfSolverRootSig.Get();
-	psoDesc.CS = CD3DX12_SHADER_BYTECODE(csBlob->GetBufferPointer(), csBlob->GetBufferSize());
-
-	ThrowIfFailed(device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&m_UpdateVelocityPSO)));
-	Helpers::SetDebugName(m_UpdateVelocityPSO.Get(), "m_UpdateVelocityPSO");
 }
 
 void SphSolver::OnGui()

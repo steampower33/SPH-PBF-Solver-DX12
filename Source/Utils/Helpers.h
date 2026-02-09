@@ -70,7 +70,7 @@ namespace Helpers {
 		ID3D12GraphicsCommandList* cmdList,
 		const void* initData,
 		UINT64 byteSize,
-		Microsoft::WRL::ComPtr<ID3D12Resource>& outUploadBuffer,
+		std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& uploadHeaps,
 		D3D12_RESOURCE_FLAGS flags = D3D12_RESOURCE_FLAG_NONE)
 	{
 		using namespace Microsoft::WRL;
@@ -96,13 +96,14 @@ namespace Helpers {
 			auto uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
 			auto uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(byteSize, D3D12_RESOURCE_FLAG_NONE);
 
+			Microsoft::WRL::ComPtr<ID3D12Resource> tempUpload;
 			ThrowIfFailed(device->CreateCommittedResource(
 				&uploadHeapProps,
 				D3D12_HEAP_FLAG_NONE,
 				&uploadBufferDesc,
 				D3D12_RESOURCE_STATE_GENERIC_READ,
 				nullptr,
-				IID_PPV_ARGS(&outUploadBuffer)));
+				IID_PPV_ARGS(&tempUpload)));
 
 			// Barrier: COMMON -> COPY_DEST
 			auto barrierToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -118,7 +119,7 @@ namespace Helpers {
 			subResourceData.RowPitch = byteSize;
 			subResourceData.SlicePitch = subResourceData.RowPitch;
 
-			UpdateSubresources<1>(cmdList, defaultBuffer.Get(), outUploadBuffer.Get(), 0, 0, 1, &subResourceData);
+			UpdateSubresources<1>(cmdList, defaultBuffer.Get(), tempUpload.Get(), 0, 0, 1, &subResourceData);
 
 			// Barrier: COPY_DEST -> GENERIC_READ
 			// If we initialized it with data, we usually want to read it (e.g., Vertex Buffer).
@@ -128,6 +129,11 @@ namespace Helpers {
 				D3D12_RESOURCE_STATE_GENERIC_READ
 			);
 			cmdList->ResourceBarrier(1, &barrierToRead);
+
+			if (tempUpload)
+			{
+				uploadHeaps.push_back(tempUpload);
+			}
 		}
 
 		// If initData is null, the buffer stays in D3D12_RESOURCE_STATE_COMMON.

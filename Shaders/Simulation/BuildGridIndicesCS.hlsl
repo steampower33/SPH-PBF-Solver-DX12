@@ -1,8 +1,5 @@
 #include "Common.hlsli"
 
-RWStructuredBuffer<Particle> g_Particles : register(u0);
-RWStructuredBuffer<uint2> g_GridIndices : register(u1);
-
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -10,19 +7,18 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= g_NumParticles)
         return;
 
-    // 1. My Hash
-    float3 myPos = g_Particles[id].Position;
+    float3 myPos = g_PosPred[id];
     uint myHash = GetGridHash(myPos);
 
-    // 2. Boundary Check
+    // Boundary Check
     if (id == 0)
     {
         g_GridIndices[myHash].x = id;
         return;
     }
 
-    // 3. Compare with Prev
-    float3 prevPos = g_Particles[id - 1].Position;
+    // Compare with Prev
+    float3 prevPos = g_PosPred[id - 1];
     uint prevHash = GetGridHash(prevPos);
 
     if (myHash != prevHash)

@@ -17,6 +17,7 @@ public:
 	void WaitForGpu();
 
 	ID3D12Device* GetDevice() const { return m_Device.Get(); }
+	ID3D12CommandAllocator* GetCommandAllocator() const { return m_CommandAllocators[m_FrameIndex].Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return m_CommandQueue.Get(); }
 	ID3D12GraphicsCommandList* GetCommandList() const { return m_CommandList.Get(); }
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDepthStencilView() const { return m_DsvHeap->GetCPUDescriptorHandleForHeapStart(); }

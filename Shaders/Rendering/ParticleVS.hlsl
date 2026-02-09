@@ -6,17 +6,8 @@ cbuffer Params : register(b0)
     float g_ThicknessCoeff;
 };
 
-struct Particle
-{
-    float3 Position;
-    float Density;
-    float3 Velocity;
-    float Pressure;
-    float3 OldPosition;
-    float Padding;
-};
-
-StructuredBuffer<Particle> g_Particles : register(t0);
+StructuredBuffer<float3> g_Pos : register(t0);
+StructuredBuffer<float> g_Density : register(t1);
 
 struct VSInput
 {
@@ -36,8 +27,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
 {
     VSOutput output;
 
-    Particle p = g_Particles[instanceID];
-    float3 particleWorldPos = p.Position;
+    float3 particleWorldPos = g_Pos[instanceID];
 
     float4 viewPos4 = mul(float4(particleWorldPos, 1.0), g_View);
     float3 centerViewPos = viewPos4.xyz;
@@ -50,7 +40,7 @@ VSOutput main(VSInput input, uint instanceID : SV_InstanceID)
     output.PosH = mul(float4(finalViewPos, 1.0), g_Proj);
     output.UV = input.UV;
     output.ViewPos = finalViewPos;
-    output.Density = p.Density;
+    output.Density = g_Density[instanceID];
 
     return output;
 }

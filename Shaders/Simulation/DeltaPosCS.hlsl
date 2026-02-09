@@ -1,10 +1,5 @@
 #include "Common.hlsli"
 
-RWStructuredBuffer<Particle> g_Particles : register(u0);
-RWStructuredBuffer<uint2> g_GridIndices : register(u1);
-RWStructuredBuffer<float> g_Densities : register(u2);
-RWStructuredBuffer<float> g_Lambdas : register(u3);
-
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
@@ -12,8 +7,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= g_NumParticles)
         return;
 
-    float3 myPos = g_Particles[id].Position;
-    float lambdaI = g_Lambdas[id];
+    float3 myPos = g_PosPred[id];
+    float lambdaI = g_Lambda[id];
     float3 deltaPos = float3(0, 0, 0);
 
     float h = g_CellSize;
@@ -48,18 +43,18 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     if (id == j)
                         continue;
 
-                    float3 neighborPos = g_Particles[j].Position;
+                    float3 neighborPos = g_PosPred[j];
                     float3 rVec = myPos - neighborPos;
                     float rSq = dot(rVec, rVec);
 
                     if (rSq < hSq && rSq > 1e-6f)
                     {
                         float r = sqrt(rSq);
-                        float lambdaJ = g_Lambdas[j];
+                        float lambdaJ = g_Lambda[j];
                         
                         float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
 
-                        float lambdaSum = (g_Lambdas[id] + g_Lambdas[j]);
+                        float lambdaSum = (lambdaI + lambdaJ);
 
                         // [Tensile Instability] s_corr
                         float wVal = Poly6Kernel(rSq, h);
@@ -77,5 +72,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
     }
 
-    g_Particles[id].Position += deltaPos / g_RestDensity;
+    g_DeltaPos[id] = deltaPos / g_RestDensity;
 }
