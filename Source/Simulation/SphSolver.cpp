@@ -21,10 +21,21 @@ void SphSolver::UpdateInputs()
 		float animationFactor = 0.5f * (1.0f - cosf(m_TotalTime * m_WallSpeed));
 		m_SimParams.BoxX.x = m_OriginMinX + (m_WallAmplitude * animationFactor);
 	}
+
+	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+	{
+		m_Reset = true;
+	}
 }
 
 void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
+	if (m_Reset)
+	{
+		ResetSimulation(cmdList);
+		m_Reset = false;
+	}
+
 	UpdateInputs();
 
 	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
@@ -182,6 +193,8 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 
 void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
+	m_pDevice = device;
+
 	CreateBuffers(device, cmdList, uploadHeaps);
 	CreateRenderSrvHeap(device, cmdList);
 	CreateAllViews(device);
@@ -216,10 +229,8 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 	m_NumParticles = x_ * y_ * z_;
 
-	std::vector<SM::Vector3> initPos(m_NumParticles);
-
-	std::vector<float>		 initZero1(m_NumParticles, 0.0f);
-	std::vector<SM::Vector3> initZero3(m_NumParticles, SM::Vector3(0.0f));
+	m_Zero1.resize(m_NumParticles, 0.0f);
+	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
 
 	float spacing = m_SimParams.CellSize * 0.5f;
 
@@ -231,12 +242,14 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 	float startY = widthY * 0.5f - spacing * y_ * 0.5f;;
 	float startZ = widthZ * 0.5f - spacing * z_ * 0.5f;
 
+	m_InitPos.resize(m_NumParticles);
+
 	int idx = 0;
 	for (int z = 0; z < z_; z++)
 		for (int y = 0; y < y_; ++y)
 			for (int x = 0; x < x_; ++x)
 			{
-				initPos[idx] = SM::Vector3(
+				m_InitPos[idx] = SM::Vector3(
 					startX + (x * spacing),
 					startY + (y * spacing),
 					startZ + (z * spacing));
@@ -262,19 +275,19 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 	UINT numGridCells = m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim;
 
-	CreateAndTrackBuffer(initPos.data(), sizeVec3, m_PosPred, "Pos_Pred");
-	CreateAndTrackBuffer(initPos.data(), sizeVec3, m_PosOld, "Pos_Old");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_VelIn, "Vel_In");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_VelOut, "Vel_Out");
-	CreateAndTrackBuffer(initZero1.data(), sizeFloat, m_Density, "Density");
-	CreateAndTrackBuffer(initZero1.data(), sizeFloat, m_Lambda, "Lambda");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_DeltaPos, "DeltaPos");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_Vorticity, "Vorticity");
+	CreateAndTrackBuffer(m_InitPos.data(), sizeVec3, m_PosPred, "Pos_Pred");
+	CreateAndTrackBuffer(m_InitPos.data(), sizeVec3, m_PosOld, "Pos_Old");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_VelIn, "Vel_In");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_VelOut, "Vel_Out");
+	CreateAndTrackBuffer(m_Zero1.data(), sizeFloat, m_Density, "Density");
+	CreateAndTrackBuffer(m_Zero1.data(), sizeFloat, m_Lambda, "Lambda");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_DeltaPos, "DeltaPos");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_Vorticity, "Vorticity");
 	CreateAndTrackBuffer(nullptr, numGridCells * sizeof(UINT) * 2, m_GridIndices, "GridIndices");
 
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempPosPred, "m_TempPosPred");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempPosOld, "m_TempPosOld");
-	CreateAndTrackBuffer(initZero3.data(), sizeVec3, m_TempVel, "m_TempVel");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_TempPosPred, "m_TempPosPred");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_TempPosOld, "m_TempPosOld");
+	CreateAndTrackBuffer(m_Zero3.data(), sizeVec3, m_TempVel, "m_TempVel");
 
 	std::vector<UINT> indices(m_NumParticles);
 	for (UINT i = 0; i < m_NumParticles; ++i)
@@ -499,6 +512,8 @@ void SphSolver::OnGui()
 		ImGui::SliderInt("MaxSteps", &m_MaxSteps, 1, 10);
 		ImGui::SliderInt("Sub-steps", &m_Iterations, 1, 10);
 
+		ImGui::Checkbox("Reset", &m_Reset);
+
 		// Physical Properties
 		ImGui::SeparatorText("Fluid Properties");
 		ImGui::DragFloat("Mass", &m_SimParams.Mass, 0.01f, 0.001f, 10.0f);
@@ -519,7 +534,7 @@ void SphSolver::OnGui()
 
 		// Wall Movement
 		ImGui::SeparatorText("Moving Wall Interaction");
-		ImGui::Checkbox("Enable Move", &m_WallMove);
+		ImGui::Checkbox("Enable Move(Shift)", &m_WallMove);
 		if (m_WallMove)
 		{
 			ImGui::DragFloat("Wall Speed", &m_WallSpeed, 0.1f);
@@ -532,4 +547,47 @@ void SphSolver::OnGui()
 		ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
 		ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
 	}
+}
+
+void SphSolver::ResetSimulation(ID3D12GraphicsCommandList* cmdList)
+{
+	UploadData(cmdList, m_PosPred, m_InitPos, m_NumParticles, sizeof(SM::Vector3));
+	UploadData(cmdList, m_VelOut, m_Zero3, m_NumParticles, sizeof(SM::Vector3));
+	UploadData(cmdList, m_Density, m_Zero1, m_NumParticles, sizeof(float));
+}
+
+template <typename T>
+void SphSolver::UploadData(ID3D12GraphicsCommandList* cmdList, ComPtr<ID3D12Resource>& buffer, std::vector<T>& data, UINT count, UINT stride)
+{
+	auto uploadHeapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	auto uploadBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(count * stride, D3D12_RESOURCE_FLAG_NONE);
+
+	ThrowIfFailed(m_pDevice->CreateCommittedResource(
+		&uploadHeapProps,
+		D3D12_HEAP_FLAG_NONE,
+		&uploadBufferDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(m_ResetUploadBuffer.GetAddressOf())));
+
+	auto barrierToCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+		buffer.Get(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+		D3D12_RESOURCE_STATE_COPY_DEST
+	);
+	cmdList->ResourceBarrier(1, &barrierToCopy);
+
+	D3D12_SUBRESOURCE_DATA subResourceData = {};
+	subResourceData.pData = data.data();
+	subResourceData.RowPitch = stride;
+	subResourceData.SlicePitch = subResourceData.RowPitch;
+
+	UpdateSubresources<1>(cmdList, buffer.Get(), m_ResetUploadBuffer.Get(), 0, 0, 1, &subResourceData);
+
+	auto barrierToRead = CD3DX12_RESOURCE_BARRIER::Transition(
+		buffer.Get(),
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+	);
+	cmdList->ResourceBarrier(1, &barrierToRead);
 }

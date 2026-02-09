@@ -35,6 +35,7 @@ public:
 	void UpdateInputs();
 	void Run(ID3D12GraphicsCommandList* cmdList);
 	void OnGui();
+	void ResetSimulation(ID3D12GraphicsCommandList* cmdList);
 
 	// [Getters]
 	ID3D12DescriptorHeap* GetSrvHeap() const { return m_SrvHeap.Get(); }
@@ -53,6 +54,20 @@ private:
 	float m_WallSpeed = 2.5f;
 	float m_WallAmplitude = 2.0f;
 	int m_Iterations = 4;
+	bool m_Reset = false;
+
+	// Data
+	SimParams m_SimParams;
+	UINT m_NumParticles = 0;
+
+	std::vector<SM::Vector3> m_InitPos;
+	std::vector<float>		 m_Zero1;
+	std::vector<SM::Vector3> m_Zero3;
+
+	ComPtr<ID3D12Resource> m_ResetUploadBuffer;
+
+	template <typename T>
+	void UploadData(ID3D12GraphicsCommandList* cmdList, ComPtr<ID3D12Resource>& buffer, std::vector<T>& data, UINT count, UINT stride);
 
 	enum HeapDescriptors
 	{
@@ -108,9 +123,6 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_SrvHeap;
 	ComPtr<ID3D12DescriptorHeap> m_UavHeap;
 
-	SimParams m_SimParams;
-	UINT m_NumParticles = 0;
-
 	ComPtr<ID3D12RootSignature> m_GlobalRootSig;
 	ComPtr<ID3D12RootSignature> m_PermuteRootSig;
 
@@ -127,6 +139,8 @@ private:
 	ComPtr<ID3D12PipelineState> m_ConstraintPSO;
 	ComPtr<ID3D12PipelineState> m_VorticityPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
+
+	ID3D12Device* m_pDevice = nullptr;
 
 	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
 
