@@ -212,7 +212,7 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 {
 	int x_ = 64;
 	int y_ = 64;
-	int z_ = 64;
+	int z_ = 32;
 
 	m_NumParticles = x_ * y_ * z_;
 
@@ -526,14 +526,10 @@ void SphSolver::OnGui()
 			ImGui::DragFloat("Wall Amplitude", &m_WallAmplitude, 0.1f);
 		}
 
-		// Advanced Stability
-		if (ImGui::TreeNode("Advanced Stability"))
-		{
-			ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1e6f, "%.0f");
-			ImGui::DragFloat("Tensile K", &m_SimParams.K, 1e-6f, 0.0f, 1.0f, "%.6f");
-			ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
-			ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
-			ImGui::TreePop();
-		}
+		ImGui::SeparatorText("Advanced Stability");
+		ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1e6f, "%.0f");
+		ImGui::DragFloat("Tensile K", &m_SimParams.K, 1e-6f, 0.0f, 1.0f, "%.6f");
+		ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
+		ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
 	}
 }

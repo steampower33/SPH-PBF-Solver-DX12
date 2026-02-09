@@ -12,7 +12,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float h = g_CellSize;
     float hSq = h * h;
     
-    float density = 0.0;
+    float density = g_Mass * Poly6Kernel(0.0, h);
     float3 gradCiSum = float3(0, 0, 0);
     float sumGradCiSq = 0.0;
 
@@ -43,12 +43,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     float3 neighborPos = g_PosPred[j];
                     float3 rVec = myPos - neighborPos;
                     float rSq = dot(rVec, rVec);
-
-                    if (rSq < hSq)
+                    
+                    if (rSq < hSq && rSq > 1e-6)
                     {
                         density += Poly6Kernel(rSq, h) * g_Mass;
-
-                        if (id != j && rSq > 1e-6f)
+                        
+                        if (id != j)
                         {
                             float r = sqrt(rSq);
                             
