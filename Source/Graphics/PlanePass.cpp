@@ -21,7 +21,6 @@ void PlanePass::Render(const RenderContext& ctx)
 	cmdList->ClearDepthStencilView(ctx.SceneDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	cmdList->OMSetRenderTargets(1, &ctx.SceneRTV, FALSE, &ctx.SceneDSV);
 
-	// Viewport & Scissor
 	cmdList->RSSetViewports(1, &ctx.Viewport);
 	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
 

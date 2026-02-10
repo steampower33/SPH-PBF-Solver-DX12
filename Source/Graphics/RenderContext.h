@@ -37,7 +37,7 @@ struct RenderContext
     struct GlobalConstants {
         SM::Matrix View;
         SM::Matrix Proj;
-        float VisualRadius = 0.03f;
+        float VisualRadius = 0.025f;
         float ThicknessCoeff = 0.05f;
     } Globals;
 
@@ -46,7 +46,7 @@ struct RenderContext
     SM::Vector3 CamPos;
 
     UINT res = 2048;
-    SM::Vector3 LightPos = SM::Vector3(0.0f, 10.0f, 10.0f);
+    SM::Vector3 LightPos = SM::Vector3(10.0f, 30.0f, -5.0f);
     SM::Vector3 TargetPos = SM::Vector3(0.0f, 0.0f, 0.0f);
     SM::Vector3 LightDir;
     SM::Matrix LightView;

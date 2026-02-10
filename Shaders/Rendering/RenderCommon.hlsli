@@ -15,7 +15,7 @@ float CalcShadowFactor(float4 shadowPosH, Texture2D shadowMap, SamplerComparison
 
     float percentLit = 0.0;
     
-    float blurSpread = 1.5;
+    float blurSpread = 1.0;
 
     [unroll]
     for (int x = -1; x <= 1; ++x)
@@ -28,7 +28,7 @@ float CalcShadowFactor(float4 shadowPosH, Texture2D shadowMap, SamplerComparison
             percentLit += shadowMap.SampleCmpLevelZero(
                 shadowSampler,
                 shadowPos.xy + offset,
-                shadowPos.z - 0.00001
+                shadowPos.z - 0.001
             );
         }
     }

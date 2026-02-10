@@ -21,7 +21,7 @@ private:
         SM::Vector2 InvScreenSize;
         float DirX;
         float DirY;
-        float Radius = 4.0f;
+        float BlurRadius = 8.0f;
         float SigmaSpatial = 4.0f;
         float SigmaRange = 0.5f;
         float pad;

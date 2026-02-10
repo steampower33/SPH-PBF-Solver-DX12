@@ -4,18 +4,16 @@
 
 void SphSolver::UpdateInputs()
 {
-	float pushStrength = 5.0f;
+	float pushStrength = 4.0f;
 
 	if (GetAsyncKeyState(VK_LEFT) & 0x8000)
-	{
 		m_SimParams.ExternalAccel = -pushStrength;
-	}
+	else if (GetAsyncKeyState(VK_RIGHT) & 0x8000)
+		m_SimParams.ExternalAccel = +pushStrength;
 	else if (GetAsyncKeyState(VK_DOWN) & 0x8000)
-	{
 		m_SimParams.ExternalAccel = 0.0f;
-	}
 
-	if (m_WallMove)
+	if (m_bWallMove)
 	{
 		m_TotalTime += m_SimParams.DeltaTime;
 		float animationFactor = 0.5f * (1.0f - cosf(m_TotalTime * m_WallSpeed));
@@ -24,16 +22,16 @@ void SphSolver::UpdateInputs()
 
 	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
 	{
-		m_Reset = true;
+		m_bReset = true;
 	}
 }
 
 void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
-	if (m_Reset)
+	if (m_bReset)
 	{
 		ResetSimulation(cmdList);
-		m_Reset = false;
+		m_bReset = false;
 	}
 
 	UpdateInputs();
@@ -223,34 +221,104 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 
 void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
-	m_NumParticles = m_X * m_Y * m_Z;
-
-	m_Zero1.resize(m_NumParticles, 0.0f);
-	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
 	float spacing = m_SimParams.CellSize * 0.5f;
 
-	float widthX = m_SimParams.BoxX.x + m_SimParams.BoxX.y;
-	float widthY = m_SimParams.BoxY.x + m_SimParams.BoxY.y;
-	float widthZ = m_SimParams.BoxZ.x + m_SimParams.BoxZ.y;
+	auto CornerDamBreak = [&]()
+		{
+			int m_X = 64;
+			int m_Y = 64;
+			int m_Z = 32;
 
-	float startX = widthX * 0.5f - spacing * m_X * 0.5f;
-	float startY = widthY * 0.5f - spacing * m_Y * 0.5f;;
-	float startZ = widthZ * 0.5f - spacing * m_Z * 0.5f;
+			m_NumParticles = m_X * m_Y * m_Z;
 
-	m_InitPos.resize(m_NumParticles);
+			m_Zero1.resize(m_NumParticles, 0.0f);
+			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
 
-	int idx = 0;
-	for (int z = 0; z < m_Z; z++)
-		for (int y = 0; y < m_Y; ++y)
-			for (int x = 0; x < m_X; ++x)
+			m_InitPos.resize(m_NumParticles);
+
+			m_SimParams.BoxX = { -3.0f, 3.0f };
+			m_SimParams.BoxZ = { -2.0f, 2.0f };
+
+			float offset = 0.2f;
+
+			float startX = m_SimParams.BoxX.x + offset; // up
+			float startY = m_SimParams.BoxY.x + offset; // up
+			float startZ = m_SimParams.BoxZ.y - offset; // down
+
+			int idx = 0;
+			for (int z = 0; z < m_Z; z++)
+				for (int y = 0; y < m_Y; ++y)
+					for (int x = 0; x < m_X; ++x)
+					{
+						m_InitPos[idx] = SM::Vector3(
+							startX + (x * spacing),
+							startY + (y * spacing),
+							startZ - (z * spacing));
+						idx++;
+					}
+		};
+
+	auto DoubleDamBreak = [&]()
+		{
+			int m_X = 64;
+			int m_Y = 64;
+			int m_Z = 32;
+
+			m_NumParticles = m_X * m_Y * m_Z;
+
+			m_Zero1.resize(m_NumParticles, 0.0f);
+			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
+
+			m_InitPos.resize(m_NumParticles);
+
+			m_SimParams.BoxX = { -2.5f, 2.5f };
+			m_SimParams.BoxZ = { -2.5f, 2.5f };
+
+			float offset = 0.2f;
+
+			UINT halfX = m_X;
+			UINT halfY = m_Y;
+			UINT halfZ = m_Z * 0.5f;
+
+			int idx = 0;
+
 			{
-				m_InitPos[idx] = SM::Vector3(
-					startX + (x * spacing),
-					startY + (y * spacing),
-					startZ + (z * spacing));
-				idx++;
+				float startX = m_SimParams.BoxX.x + offset; // up
+				float startY = m_SimParams.BoxY.x + offset; // up
+				float startZ = m_SimParams.BoxZ.x + offset; // up
+
+				for (int z = 0; z < halfZ; z++)
+					for (int y = 0; y < halfY; ++y)
+						for (int x = 0; x < halfX; ++x)
+						{
+							m_InitPos[idx] = SM::Vector3(
+								startX + (x * spacing),
+								startY + (y * spacing),
+								startZ + (z * spacing));
+							idx++;
+						}
 			}
+
+			{
+				float startX = m_SimParams.BoxX.y - offset; // down
+				float startY = m_SimParams.BoxY.x + offset; // up
+				float startZ = m_SimParams.BoxZ.y - offset; // down
+
+				for (int z = 0; z < halfZ; z++)
+					for (int y = 0; y < halfY; ++y)
+						for (int x = 0; x < halfX; ++x)
+						{
+							m_InitPos[idx] = SM::Vector3(
+								startX - (x * spacing),
+								startY + (y * spacing),
+								startZ - (z * spacing));
+							idx++;
+						}
+			}
+		};
+
+	CornerDamBreak();
+	//DoubleDamBreak();
 
 	UINT64 sizeVec3 = m_NumParticles * sizeof(SM::Vector3);
 	UINT64 sizeFloat = m_NumParticles * sizeof(float);
@@ -508,7 +576,7 @@ void SphSolver::OnGui()
 		ImGui::SliderInt("MaxSteps", &m_MaxSteps, 1, 10);
 		ImGui::SliderInt("Sub-steps", &m_Iterations, 1, 10);
 
-		ImGui::Checkbox("Reset", &m_Reset);
+		ImGui::Checkbox("Reset", &m_bReset);
 
 		// Physical Properties
 		ImGui::SeparatorText("Fluid Properties");
@@ -530,8 +598,8 @@ void SphSolver::OnGui()
 
 		// Wall Movement
 		ImGui::SeparatorText("Moving Wall Interaction");
-		ImGui::Checkbox("Enable Move(Shift)", &m_WallMove);
-		if (m_WallMove)
+		ImGui::Checkbox("Enable Move(Shift)", &m_bWallMove);
+		if (m_bWallMove)
 		{
 			ImGui::DragFloat("Wall Speed", &m_WallSpeed, 0.1f);
 			ImGui::DragFloat("Wall Amplitude", &m_WallAmplitude, 0.1f);

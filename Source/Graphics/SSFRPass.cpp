@@ -101,7 +101,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 			ImGui::DragFloat("Thickness Coeff", &ctx.Globals.ThicknessCoeff, 0.001f, 0.0f, 1.0f);
 
 			ImGui::SeparatorText("Depth Blur");
-			ImGui::DragFloat("Blur Radius", &m_BlurParams.Radius, 0.1f, 0.0f, 50.0f);
+			ImGui::DragFloat("Blur Radius", &m_BlurParams.BlurRadius, 0.1f, 0.0f, 50.0f);
 			ImGui::DragFloat("Sigma Spatial", &m_BlurParams.SigmaSpatial, 0.1f, 0.1f, 50.0f);
 			ImGui::DragFloat("Sigma Range", &m_BlurParams.SigmaRange, 0.01f, 0.01f, 10.0f);
 		}

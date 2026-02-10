@@ -23,9 +23,9 @@ public:
 
 		float Epsilon = 5000.0f;
 		float K = 0.000001f;
-		float N = 4.0f;
+		float N = 2.0f;
 		float DqScale = 0.1f;
-		float VorticityEpsilon = 0.000001f;
+		float VorticityEpsilon = 0.000005f;
 		float ExternalAccel = 0.0f;
 	};
 
@@ -43,22 +43,18 @@ public:
 	const SimParams& GetSimParams() const { return m_SimParams; }
 	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
 
-	void ToggleWallMovement() { m_WallMove = !m_WallMove; }
+	void ToggleWallMovement() { m_bWallMove = !m_bWallMove; }
 
 	int m_MaxSteps = 2;
 private:
 	// Simulation State
-	bool m_WallMove = false;
+	bool m_bWallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
 	float m_WallSpeed = 2.5f;
 	float m_WallAmplitude = 2.0f;
 	int m_Iterations = 4;
-	bool m_Reset = false;
-
-	int m_X = 64;
-	int m_Y = 64;
-	int m_Z = 32;
+	bool m_bReset = false;
 
 	// Data
 	SimParams m_SimParams;
