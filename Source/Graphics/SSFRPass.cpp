@@ -90,7 +90,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 		if (m_bDebugDrawParticles)
 		{
 			ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
-			ctx.Globals.VisualRadius = 0.02f;
+			//ctx.Globals.VisualRadius = 0.02f;
 		}
 		else
 		{

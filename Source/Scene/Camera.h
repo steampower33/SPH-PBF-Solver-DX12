@@ -29,15 +29,15 @@ private:
 	SM::Vector3 m_Up = SM::Vector3::Up; // (0, 1, 0)
 
 	// Projection Parameters
-	float m_FovY = DX::XMConvertToRadians(45.0f);
+	float m_FovY = DX::XMConvertToRadians(60.0f);
 	float m_AspectRatio = 1.777f;
 	float m_NearZ = 0.1f;
 	float m_FarZ = 1000.0f;
 
 	// Orbit Control
 	float m_Theta = 0.0f;   // Yaw
-	float m_Phi = 0.2f;     // Pitch
-	float m_Radius = 10.0f; // Zoom
+	float m_Phi = 0.5f;     // Pitch
+	float m_Radius = 20.0f; // Zoom
 
 	// Mouse State
 	POINT m_LastMousePos = { 0, 0 };

@@ -10,6 +10,15 @@ RWStructuredBuffer<float3> g_Vorticity     : register(u7);
 RWStructuredBuffer<uint2>  g_GridIndices   : register(u8);
 RWStructuredBuffer<uint>   g_SortedIndices : register(u9);
 
+struct DiffuseParticle
+{
+    float4 PositionLife;
+    float4 VelocityType;
+};
+RWStructuredBuffer<DiffuseParticle> g_DiffuseParticles : register(u10);
+RWStructuredBuffer<DiffuseParticle> g_DiffuseParticlesCompacted : register(u11);
+RWStructuredBuffer<uint> g_Counters : register(u12);
+
 // Simulation Constants
 cbuffer SimParams : register(b0)
 {
@@ -34,6 +43,8 @@ cbuffer SimParams : register(b0)
     float g_dqScale;
     float g_vorticityEpsilon;
     float g_externalAccel;
+    
+    float g_JitterFactor;
 };
 
 // [Core Logic] 3D Position -> 1D Grid Hash

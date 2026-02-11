@@ -63,7 +63,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         float ratio = wVal / valAtDq;
         
                         // s_corr = -k * (ratio ^ n)
-                        float sCorr = -k * pow(max(ratio, 0.0), n);
+                        float sCorr = -k * pow(ratio, n);
 
                         deltaPos += (lambdaSum + sCorr) * gradW;
                     }

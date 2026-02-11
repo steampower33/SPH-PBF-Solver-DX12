@@ -6,12 +6,17 @@ void SphSolver::UpdateInputs()
 {
 	float pushStrength = 4.0f;
 
-	if (GetAsyncKeyState(VK_LEFT) & 0x8000)
+	if (GetAsyncKeyState('A') & 0x8000)
 		m_SimParams.ExternalAccel = -pushStrength;
-	else if (GetAsyncKeyState(VK_RIGHT) & 0x8000)
+	else if (GetAsyncKeyState('D') & 0x8000)
 		m_SimParams.ExternalAccel = +pushStrength;
-	else if (GetAsyncKeyState(VK_DOWN) & 0x8000)
+	else if (GetAsyncKeyState('S') & 0x8000)
 		m_SimParams.ExternalAccel = 0.0f;
+
+	if (GetAsyncKeyState('1') & 0x8000)
+		m_bCornerDamBreak = true;
+	else if (GetAsyncKeyState('2') & 0x8000)
+		m_bDoubleDamBreak = true;
 
 	if (m_bWallMove)
 	{
@@ -19,19 +24,13 @@ void SphSolver::UpdateInputs()
 		float animationFactor = 0.5f * (1.0f - cosf(m_TotalTime * m_WallSpeed));
 		m_SimParams.BoxX.x = m_OriginMinX + (m_WallAmplitude * animationFactor);
 	}
-
-	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-	{
-		m_bReset = true;
-	}
 }
 
 void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
-	if (m_bReset)
+	if (m_bCornerDamBreak || m_bDoubleDamBreak)
 	{
 		ResetSimulation(cmdList);
-		m_bReset = false;
 	}
 
 	UpdateInputs();
@@ -46,147 +45,215 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 
 	UINT groups = (m_NumParticles + 255) / 256;
 
-	// Barriers
 	auto posPredBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get());
 
-	// [1] Integration Pass
+	m_SimParams.DeltaTime = m_FixedDt / m_Substeps;
+
+	for (int s = 0; s < m_Substeps; ++s)
 	{
-		cmdList->SetPipelineState(m_IntegrationPSO.Get());
 
-		cmdList->Dispatch(groups, 1, 1);
-
-		cmdList->ResourceBarrier(1, &posPredBarrier);
-	}
-
-	// [2] Sort Pass
-	{
-		RunBitonicSort(cmdList);
-	}
-
-	// [3] Permute Pass (Data Reordering)
-	{
-		auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-		cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
-
-		cmdList->SetComputeRootSignature(m_PermuteRootSig.Get());
-		cmdList->SetPipelineState(m_PermuteDataPSO.Get());
-
-		cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-
-		// UAV Table (Param 1) -> u0~u2 (Temp Buffers)
-		CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-		uavHandle.Offset(UAV_IDX_TEMP_POS, m_CbvSrvUavDescriptorSize);
-		cmdList->SetComputeRootDescriptorTable(1, uavHandle);
-
-		// SRV Table (Param 2) -> t0~t3 (Source)
-		CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-		srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
-		cmdList->SetComputeRootDescriptorTable(2, srvHandle);
-
-		cmdList->Dispatch(groups, 1, 1);
-
-		auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
-	}
-
-	// [4] Copy Back
-	{
-		CD3DX12_RESOURCE_BARRIER barriers[] = {
-			// Temp (UAV -> Source)
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-			// Main (UAV -> Dest)
-			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-		};
-		cmdList->ResourceBarrier(6, barriers);
-
-		cmdList->CopyResource(m_PosPred.Get(), m_TempPosPred.Get());
-		cmdList->CopyResource(m_PosOld.Get(), m_TempPosOld.Get());
-		cmdList->CopyResource(m_VelIn.Get(), m_TempVel.Get());
-
-		CD3DX12_RESOURCE_BARRIER restoreBarriers[] = {
-			// Main: Dest -> UAV
-			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),  D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),   D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-
-			// Temp: Source -> UAV
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-		};
-		cmdList->ResourceBarrier(6, restoreBarriers);
-	}
-
-	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
-
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRootDescriptorTable(2, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
-
-	// [5] Grid Pass
-	{
-		cmdList->SetPipelineState(m_ClearGridPSO.Get());
-
-		UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
-		cmdList->Dispatch(gridGroups, 1, 1);
-
-		auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndices.Get());
-		cmdList->ResourceBarrier(1, &gridBarrier);
-
-		cmdList->SetPipelineState(m_BuildGridPSO.Get());
-		cmdList->Dispatch(groups, 1, 1);
-
-		cmdList->ResourceBarrier(1, &gridBarrier);
-	}
-
-	// [5] Solver Iteration
-	{
-		CD3DX12_RESOURCE_BARRIER DensityLambda[] = {
-			CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get()),
-			CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get())
-		};
-
-		CD3DX12_RESOURCE_BARRIER PredDelta[] = {
-			CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get()),
-			CD3DX12_RESOURCE_BARRIER::UAV(m_DeltaPos.Get())
-		};
-
-		for (int iter = 0; iter < m_Iterations; ++iter)
+		// [1] Integration Pass
 		{
-			// Density & Lambda
-			cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
-			cmdList->Dispatch(groups, 1, 1);
+			cmdList->SetPipelineState(m_IntegrationPSO.Get());
 
-			cmdList->ResourceBarrier(2, DensityLambda);
-
-			// Delta Pos
-			cmdList->SetPipelineState(m_DeltaPosPSO.Get());
-			cmdList->Dispatch(groups, 1, 1);
-
-			cmdList->ResourceBarrier(2, PredDelta);
-
-			// Constraint Apply
-			cmdList->SetPipelineState(m_ConstraintPSO.Get());
 			cmdList->Dispatch(groups, 1, 1);
 
 			cmdList->ResourceBarrier(1, &posPredBarrier);
 		}
+
+		// [2] Sort Pass
+		{
+			RunBitonicSort(cmdList);
+		}
+
+		// [3] Permute Pass (Data Reordering)
+		{
+			auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+			cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
+
+			cmdList->SetComputeRootSignature(m_PermuteRootSig.Get());
+			cmdList->SetPipelineState(m_PermuteDataPSO.Get());
+
+			cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+
+			// UAV Table (Param 1) -> u0~u2 (Temp Buffers)
+			CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+			uavHandle.Offset(UAV_IDX_TEMP_POS, m_CbvSrvUavDescriptorSize);
+			cmdList->SetComputeRootDescriptorTable(1, uavHandle);
+
+			// SRV Table (Param 2) -> t0~t3 (Source)
+			CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+			srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
+			cmdList->SetComputeRootDescriptorTable(2, srvHandle);
+
+			cmdList->Dispatch(groups, 1, 1);
+
+			auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+			cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
+		}
+
+		// [4] Copy Back
+		{
+			CD3DX12_RESOURCE_BARRIER barriers[] = {
+				// Temp (UAV -> Source)
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+				// Main (UAV -> Dest)
+				CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+			};
+			cmdList->ResourceBarrier(6, barriers);
+
+			cmdList->CopyResource(m_PosPred.Get(), m_TempPosPred.Get());
+			cmdList->CopyResource(m_PosOld.Get(), m_TempPosOld.Get());
+			cmdList->CopyResource(m_VelIn.Get(), m_TempVel.Get());
+
+			CD3DX12_RESOURCE_BARRIER restoreBarriers[] = {
+				// Main: Dest -> UAV
+				CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),  D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),   D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+
+				// Temp: Source -> UAV
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+				CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			};
+			cmdList->ResourceBarrier(6, restoreBarriers);
+		}
+
+		cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
+
+		cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+		cmdList->SetComputeRootDescriptorTable(2, m_UavHeap->GetGPUDescriptorHandleForHeapStart());
+
+		// [5] Grid Pass
+		{
+			cmdList->SetPipelineState(m_ClearGridPSO.Get());
+
+			UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
+			cmdList->Dispatch(gridGroups, 1, 1);
+
+			auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndices.Get());
+			cmdList->ResourceBarrier(1, &gridBarrier);
+
+			cmdList->SetPipelineState(m_BuildGridPSO.Get());
+			cmdList->Dispatch(groups, 1, 1);
+
+			cmdList->ResourceBarrier(1, &gridBarrier);
+		}
+
+		// [5] Solver Iteration
+		{
+			CD3DX12_RESOURCE_BARRIER DensityLambda[] = {
+				CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get()),
+				CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get())
+			};
+
+			CD3DX12_RESOURCE_BARRIER PredDelta[] = {
+				CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get()),
+				CD3DX12_RESOURCE_BARRIER::UAV(m_DeltaPos.Get())
+			};
+
+			for (int iter = 0; iter < m_Iterations; ++iter)
+			{
+				// Density & Lambda
+				cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
+				cmdList->Dispatch(groups, 1, 1);
+
+				cmdList->ResourceBarrier(2, DensityLambda);
+
+				// Delta Pos
+				cmdList->SetPipelineState(m_DeltaPosPSO.Get());
+				cmdList->Dispatch(groups, 1, 1);
+
+				cmdList->ResourceBarrier(2, PredDelta);
+
+				// Constraint Apply
+				cmdList->SetPipelineState(m_ConstraintPSO.Get());
+				cmdList->Dispatch(groups, 1, 1);
+
+				cmdList->ResourceBarrier(1, &posPredBarrier);
+			}
+		}
+
+		cmdList->SetPipelineState(m_VorticityPSO.Get());
+		cmdList->Dispatch(groups, 1, 1);
+
+		auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
+		cmdList->ResourceBarrier(1, &vorticityBarrier);
+
+		cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
+		cmdList->Dispatch(groups, 1, 1);
+
+		auto velOutBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
+		cmdList->ResourceBarrier(1, &velOutBarrier);
+
 	}
+}
 
-	cmdList->SetPipelineState(m_VorticityPSO.Get());
-	cmdList->Dispatch(groups, 1, 1);
+void SphSolver::OnGui()
+{
+	if (ImGui::CollapsingHeader("PBF Solver Settings", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		// Simulation Control
+		ImGui::SeparatorText("Simulation Control");
 
-	auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
-	cmdList->ResourceBarrier(1, &vorticityBarrier);
+		float realFPS = ImGui::GetIO().Framerate;
+		float realMS = 1000.0f / realFPS;
+		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Real: %.1f FPS (%.3f ms)", realFPS, realMS);
 
-	cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
-	cmdList->Dispatch(groups, 1, 1);
+		float fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60.0f;
+		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Sim Fixed: %.1f FPS", fps);
 
-	auto velOutBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
-	cmdList->ResourceBarrier(1, &velOutBarrier);
+		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
+		ImGui::Text("Time Step (dt): %.6f s", m_SimParams.DeltaTime);
+		if (ImGui::DragFloat("Target Sim FPS", &fps, 1, 30.0, 240.0)) {
+			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, (int)fps);
+		}
+		ImGui::SliderInt("Substeps", &m_Substeps, 1, 10);
+		ImGui::SliderInt("Iterations", &m_Iterations, 1, 10);
+
+		ImGui::SeparatorText("Scene Reset");
+		ImGui::Checkbox("CornerDamBreak", &m_bCornerDamBreak);
+		ImGui::Checkbox("DoubleDamBreak", &m_bDoubleDamBreak);
+
+		// Physical Properties
+		ImGui::SeparatorText("Fluid Properties");
+		ImGui::DragFloat("Mass", &m_SimParams.Mass, 0.01f, 0.001f, 10.0f);
+		ImGui::DragFloat("Rest Density", &m_SimParams.RestDensity, 10.0f, 100.0f, 5000.0f);
+		ImGui::DragFloat("Viscosity", &m_SimParams.Viscosity, 0.001f, 0.0f, 5.0f);
+		ImGui::DragFloat("Gravity Y", &m_SimParams.GravityY, 0.1f, -20.0f, 20.0f);
+		ImGui::DragFloat("Spacing", &m_Spacing, 1e-3f, 0.0f, 2.0f, "%.3f");
+
+		// Boundary & World
+		ImGui::SeparatorText("Boundary & World");
+
+		if (ImGui::DragFloat("Cell Size (h)", &m_SimParams.CellSize, 0.001f, 0.01f, 1.0f)) {
+			m_SimParams.CellSize = std::max(0.01f, m_SimParams.CellSize);
+		}
+		ImGui::DragFloat("JitterFactor", &m_SimParams.JitterFactor, 1e-3f, 0.0f, 1.0f, "%.3f");
+
+		ImGui::DragFloat2("Box X (Min/Max)", &m_SimParams.BoxX.x, 0.1f);
+		ImGui::DragFloat2("Box Y (Min/Max)", &m_SimParams.BoxY.x, 0.1f);
+		ImGui::DragFloat2("Box Z (Min/Max)", &m_SimParams.BoxZ.x, 0.1f);
+
+		// Wall Movement
+		ImGui::SeparatorText("Moving Wall Interaction");
+		ImGui::Checkbox("Enable Move(Shift)", &m_bWallMove);
+		ImGui::DragFloat("OriginMinX", &m_OriginMinX, 0.1f);
+		ImGui::DragFloat("Wall Speed", &m_WallSpeed, 0.1f);
+		ImGui::DragFloat("Wall Amplitude", &m_WallAmplitude, 0.1f);
+
+		ImGui::SeparatorText("Advanced Stability");
+		ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1000.0f);
+		ImGui::SliderFloat("Tensile K", &m_SimParams.K, 0.0f, 0.001f, "%.8f");
+		ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
+		ImGui::DragFloat("DqScale", &m_SimParams.DqScale, 1e-8f, 0.0f, 1.0f, "%.8f");
+		ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-3f, 0.0f, 1.0f, "%.3f");
+	}
 }
 
 void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
@@ -210,115 +277,14 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreateComputePSO(device, shaderHelper, L"ConstraintCS.hlsl", m_ConstraintPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"VorticityCS.hlsl", m_VorticityPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"UpdateVelocityCS.hlsl", m_UpdateVelocityPSO, m_GlobalRootSig);
-
-	{
-		m_SimParams.NumParticles = m_NumParticles;
-		m_SimParams.DeltaTime = 1.0f / 144.0f;
-
-		m_OriginMinX = m_SimParams.BoxX.x;
-	}
 }
 
 void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
-	float spacing = m_SimParams.CellSize * 0.5f;
+	ResetParticlePos();
 
-	auto CornerDamBreak = [&]()
-		{
-			int m_X = 64;
-			int m_Y = 64;
-			int m_Z = 32;
-
-			m_NumParticles = m_X * m_Y * m_Z;
-
-			m_Zero1.resize(m_NumParticles, 0.0f);
-			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-			m_InitPos.resize(m_NumParticles);
-
-			m_SimParams.BoxX = { -3.0f, 3.0f };
-			m_SimParams.BoxZ = { -2.0f, 2.0f };
-
-			float offset = 0.2f;
-
-			float startX = m_SimParams.BoxX.x + offset; // up
-			float startY = m_SimParams.BoxY.x + offset; // up
-			float startZ = m_SimParams.BoxZ.y - offset; // down
-
-			int idx = 0;
-			for (int z = 0; z < m_Z; z++)
-				for (int y = 0; y < m_Y; ++y)
-					for (int x = 0; x < m_X; ++x)
-					{
-						m_InitPos[idx] = SM::Vector3(
-							startX + (x * spacing),
-							startY + (y * spacing),
-							startZ - (z * spacing));
-						idx++;
-					}
-		};
-
-	auto DoubleDamBreak = [&]()
-		{
-			int m_X = 64;
-			int m_Y = 64;
-			int m_Z = 32;
-
-			m_NumParticles = m_X * m_Y * m_Z;
-
-			m_Zero1.resize(m_NumParticles, 0.0f);
-			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-			m_InitPos.resize(m_NumParticles);
-
-			m_SimParams.BoxX = { -2.5f, 2.5f };
-			m_SimParams.BoxZ = { -2.5f, 2.5f };
-
-			float offset = 0.2f;
-
-			UINT halfX = m_X;
-			UINT halfY = m_Y;
-			UINT halfZ = m_Z * 0.5f;
-
-			int idx = 0;
-
-			{
-				float startX = m_SimParams.BoxX.x + offset; // up
-				float startY = m_SimParams.BoxY.x + offset; // up
-				float startZ = m_SimParams.BoxZ.x + offset; // up
-
-				for (int z = 0; z < halfZ; z++)
-					for (int y = 0; y < halfY; ++y)
-						for (int x = 0; x < halfX; ++x)
-						{
-							m_InitPos[idx] = SM::Vector3(
-								startX + (x * spacing),
-								startY + (y * spacing),
-								startZ + (z * spacing));
-							idx++;
-						}
-			}
-
-			{
-				float startX = m_SimParams.BoxX.y - offset; // down
-				float startY = m_SimParams.BoxY.x + offset; // up
-				float startZ = m_SimParams.BoxZ.y - offset; // down
-
-				for (int z = 0; z < halfZ; z++)
-					for (int y = 0; y < halfY; ++y)
-						for (int x = 0; x < halfX; ++x)
-						{
-							m_InitPos[idx] = SM::Vector3(
-								startX - (x * spacing),
-								startY + (y * spacing),
-								startZ - (z * spacing));
-							idx++;
-						}
-			}
-		};
-
-	CornerDamBreak();
-	//DoubleDamBreak();
+	m_SimParams.NumParticles = m_NumParticles;
+	m_OriginMinX = m_SimParams.BoxX.x;
 
 	UINT64 sizeVec3 = m_NumParticles * sizeof(SM::Vector3);
 	UINT64 sizeFloat = m_NumParticles * sizeof(float);
@@ -359,6 +325,120 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 		indices[i] = i;
 	}
 	CreateAndTrackBuffer(indices.data(), m_NumParticles * sizeof(UINT), m_SortedIndices, "m_SortedIndices");
+
+	CreateAndTrackBuffer(nullptr, m_MaxDiffuseParticles * sizeof(DiffuseParticle), m_DiffuseParticles, "m_DiffuseParticles");
+	CreateAndTrackBuffer(nullptr, m_MaxDiffuseParticles * sizeof(DiffuseParticle), m_DiffuseParticlesCompacted, "m_DiffuseParticlesCompacted");
+	CreateAndTrackBuffer(m_ZeroValue, sizeof(UINT), m_Counters, "m_Counters");
+}
+
+void SphSolver::ResetParticlePos()
+{
+	auto CornerDamBreak = [&]()
+		{
+			int m_X = 64;
+			int m_Y = 64;
+			int m_Z = 32;
+
+			m_NumParticles = m_X * m_Y * m_Z;
+
+			m_Zero1.resize(m_NumParticles, 0.0f);
+			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
+
+			m_InitPos.resize(m_NumParticles);
+
+			m_SimParams.BoxX = { -7.0f, 7.0f };
+			m_OriginMinX = -7.0f;
+			m_SimParams.BoxZ = { -4.0f, 4.0f };
+
+			float offset = 0.2f;
+
+			float startX = m_SimParams.BoxX.x + offset; // up
+			float startY = m_SimParams.BoxY.x + offset; // up
+			float startZ = m_SimParams.BoxZ.y - offset; // down
+
+			int idx = 0;
+			for (int z = 0; z < m_Z; z++)
+				for (int y = 0; y < m_Y; ++y)
+					for (int x = 0; x < m_X; ++x)
+					{
+						m_InitPos[idx] = SM::Vector3(
+							startX + (x * m_Spacing),
+							startY + (y * m_Spacing),
+							startZ - (z * m_Spacing));
+						idx++;
+					}
+		};
+
+	auto DoubleDamBreak = [&]()
+		{
+			int m_X = 32;
+			int m_Y = 64;
+			int m_Z = 64;
+
+			m_NumParticles = m_X * m_Y * m_Z;
+
+			m_Zero1.resize(m_NumParticles, 0.0f);
+			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
+
+			m_InitPos.resize(m_NumParticles);
+
+			m_SimParams.BoxX = { -5.0f, 5.0f };
+			m_SimParams.BoxZ = { -5.0f, 5.0f };
+			m_OriginMinX = -5.0f;
+
+			float offset = 0.2f;
+
+			UINT halfX = m_X;
+			UINT halfY = m_Y;
+			UINT halfZ = m_Z * 0.5f;
+
+			int idx = 0;
+
+			{
+				float startX = m_SimParams.BoxX.x + offset; // up
+				float startY = m_SimParams.BoxY.x + offset; // up
+				float startZ = m_SimParams.BoxZ.x + offset; // up
+
+				for (int z = 0; z < halfZ; z++)
+					for (int y = 0; y < halfY; ++y)
+						for (int x = 0; x < halfX; ++x)
+						{
+							m_InitPos[idx] = SM::Vector3(
+								startX + (x * m_Spacing),
+								startY + (y * m_Spacing),
+								startZ + (z * m_Spacing));
+							idx++;
+						}
+			}
+
+			{
+				float startX = m_SimParams.BoxX.y - offset; // down
+				float startY = m_SimParams.BoxY.x + offset; // up
+				float startZ = m_SimParams.BoxZ.y - offset; // down
+
+				for (int z = 0; z < halfZ; z++)
+					for (int y = 0; y < halfY; ++y)
+						for (int x = 0; x < halfX; ++x)
+						{
+							m_InitPos[idx] = SM::Vector3(
+								startX - (x * m_Spacing),
+								startY + (y * m_Spacing),
+								startZ - (z * m_Spacing));
+							idx++;
+						}
+			}
+		};
+	if (m_bDoubleDamBreak)
+	{
+		DoubleDamBreak();
+		m_bDoubleDamBreak = false;
+	}
+	else if (m_bCornerDamBreak)
+	{
+		CornerDamBreak();
+		m_bCornerDamBreak = false;
+	}
+
 }
 
 void SphSolver::CreateRenderSrvHeap(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList)
@@ -441,6 +521,10 @@ void SphSolver::CreateAllViews(ID3D12Device* device)
 	CreateBufferUAV(m_TempPosOld.Get(), m_NumParticles, sizeof(SM::Vector3), UAV_IDX_TEMP_OLD);
 	CreateBufferUAV(m_TempVel.Get(), m_NumParticles, sizeof(SM::Vector3), UAV_IDX_TEMP_VEL);
 
+	CreateBufferUAV(m_DiffuseParticles.Get(), m_MaxDiffuseParticles, sizeof(DiffuseParticle), UAV_IDX_DIFFUSE_PARTICLES);
+	CreateBufferUAV(m_DiffuseParticlesCompacted.Get(), m_MaxDiffuseParticles, sizeof(DiffuseParticle), UAV_IDX_DIFFUSE_PARTICLES_COMPACTED);
+	CreateBufferUAV(m_Counters.Get(), 1, sizeof(UINT), UAV_IDX_COUNTERS);
+
 	// Create SRV
 	auto CreateBufferSRV = [&](ID3D12Resource* pBuffer, int heapIdx) {
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -481,7 +565,7 @@ void SphSolver::CreateGlobalRootSignature(ID3D12Device* device)
 	rootParameters[1].InitAsConstants(sizeof(SortConstants) / 4, 1);
 
 	CD3DX12_DESCRIPTOR_RANGE1 uavRange;
-	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 10, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+	uavRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 13, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 	rootParameters[2].InitAsDescriptorTable(1, &uavRange);
 
 	CD3DX12_DESCRIPTOR_RANGE1 srvRange;
@@ -554,68 +638,10 @@ void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 	}
 }
 
-void SphSolver::OnGui()
-{
-	if (ImGui::CollapsingHeader("PBF Solver Settings", ImGuiTreeNodeFlags_DefaultOpen))
-	{
-		// Simulation Control
-		ImGui::SeparatorText("Simulation Control");
-
-		float realFPS = ImGui::GetIO().Framerate;
-		float realMS = 1000.0f / realFPS;
-		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Real: %.1f FPS (%.3f ms)", realFPS, realMS);
-
-		float fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60.0f;
-		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Sim Fixed: %.1f FPS", fps);
-
-		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
-		ImGui::Text("Time Step (dt): %.6f s", m_SimParams.DeltaTime);
-		if (ImGui::DragFloat("Target Sim FPS", &fps, 1, 30.0, 240.0)) {
-			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, (int)fps);
-		}
-		ImGui::SliderInt("MaxSteps", &m_MaxSteps, 1, 10);
-		ImGui::SliderInt("Sub-steps", &m_Iterations, 1, 10);
-
-		ImGui::Checkbox("Reset", &m_bReset);
-
-		// Physical Properties
-		ImGui::SeparatorText("Fluid Properties");
-		ImGui::DragFloat("Mass", &m_SimParams.Mass, 0.01f, 0.001f, 10.0f);
-		ImGui::DragFloat("Rest Density", &m_SimParams.RestDensity, 10.0f, 100.0f, 5000.0f);
-		ImGui::DragFloat("Viscosity", &m_SimParams.Viscosity, 0.001f, 0.0f, 5.0f);
-		ImGui::DragFloat("Gravity Y", &m_SimParams.GravityY, 0.1f, -20.0f, 20.0f);
-
-		// Boundary & World
-		ImGui::SeparatorText("Boundary & World");
-
-		if (ImGui::DragFloat("Cell Size (h)", &m_SimParams.CellSize, 0.001f, 0.01f, 1.0f)) {
-			m_SimParams.CellSize = std::max(0.01f, m_SimParams.CellSize);
-		}
-
-		ImGui::DragFloat2("Box X (Min/Max)", &m_SimParams.BoxX.x, 0.1f);
-		ImGui::DragFloat2("Box Y (Min/Max)", &m_SimParams.BoxY.x, 0.1f);
-		ImGui::DragFloat2("Box Z (Min/Max)", &m_SimParams.BoxZ.x, 0.1f);
-
-		// Wall Movement
-		ImGui::SeparatorText("Moving Wall Interaction");
-		ImGui::Checkbox("Enable Move(Shift)", &m_bWallMove);
-		if (m_bWallMove)
-		{
-			ImGui::DragFloat("Wall Speed", &m_WallSpeed, 0.1f);
-			ImGui::DragFloat("Wall Amplitude", &m_WallAmplitude, 0.1f);
-		}
-
-		ImGui::SeparatorText("Advanced Stability");
-		ImGui::DragFloat("CFM Epsilon", &m_SimParams.Epsilon, 10.0f, 0.0f, 1e6f, "%.0f");
-		ImGui::DragFloat("Tensile K", &m_SimParams.K, 1e-6f, 0.0f, 1.0f, "%.6f");
-		ImGui::DragFloat("Tensile N", &m_SimParams.N, 0.1f, 1.0f, 10.0f);
-		ImGui::DragFloat("DqScale", &m_SimParams.DqScale, 0.1f, 0.0f, 1.0f);
-		ImGui::DragFloat("Vorticity", &m_SimParams.VorticityEpsilon, 1e-6f, 0.0f, 1.0f, "%.6f");
-	}
-}
-
 void SphSolver::ResetSimulation(ID3D12GraphicsCommandList* cmdList)
 {
+	ResetParticlePos();
+
 	UploadData(cmdList, m_PosPred, m_InitPos, m_NumParticles, sizeof(SM::Vector3));
 	UploadData(cmdList, m_VelOut, m_Zero3, m_NumParticles, sizeof(SM::Vector3));
 	UploadData(cmdList, m_Density, m_Zero1, m_NumParticles, sizeof(float));

@@ -51,27 +51,18 @@ bool FluidSimApp::Run()
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-		float simDt = m_Solver.GetSimParams().DeltaTime;
-		float maxSteps = m_Solver.m_MaxSteps;
+		if (dt > 0.1f) dt = 0.1f;
+		timeAccumulator += dt;
+
+		float simDt = m_Solver.m_FixedDt;
 
 		if (!m_Gui.m_IsPaused)
 		{
-			int steps = 0; 
-			while (timeAccumulator >= simDt && steps < maxSteps)
+			while (timeAccumulator >= simDt)
 			{
 				m_Solver.Run(cmdList);
 				timeAccumulator -= simDt;
-				steps++;
 			}
-
-			if (timeAccumulator > simDt)
-			{
-				timeAccumulator = 0.0f;
-			}
-		}
-		else
-		{
-			timeAccumulator = 0.0f;
 		}
 
 		m_RendererManager.Render(cmdList);

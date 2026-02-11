@@ -14,7 +14,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float h = g_CellSize;
     float hSq = h * h;
     int3 myGridPos = (int3) floor(pi / h) + int3(1000, 1000, 1000);
-
+    
     for (int z = -1; z <= 1; ++z)
     {
         for (int y = -1; y <= 1; ++y)
@@ -52,5 +52,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
     }
     
-    g_Vorticity[id] = vorticity;
+    float volume = g_Mass / g_RestDensity;
+    g_Vorticity[id] = vorticity * volume;
 }

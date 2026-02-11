@@ -37,7 +37,7 @@ struct RenderContext
     struct GlobalConstants {
         SM::Matrix View;
         SM::Matrix Proj;
-        float VisualRadius = 0.025f;
+        float VisualRadius = 0.05f;
         float ThicknessCoeff = 0.05f;
     } Globals;
 

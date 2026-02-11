@@ -7,26 +7,29 @@ class SphSolver
 public:
 	struct SimParams
 	{
-		float DeltaTime = 1.0f / 144.0f;
+		float DeltaTime = 1.0f / 60.0f;
 		UINT NumParticles;
-		float CellSize = 0.1f;
+		float CellSize = 0.2f;
 		UINT GridDim = 128;
 
-		float Mass = 0.1f;
+		float Mass = 1.0f;
 		float RestDensity = 1000.0f;
-		float Viscosity = 0.03f;
+		float Viscosity = 0.15f;
 		float GravityY = -9.81f;
 
-		SM::Vector2 BoxX = { -3.0f, 4.0f };
-		SM::Vector2 BoxY = { 0.0f, 4.0f };
-		SM::Vector2 BoxZ = { -2.0f, 2.0f };
+		SM::Vector2 BoxX = { -7.0f, 7.0f };
+		SM::Vector2 BoxY = { 0.0f, 20.0f };
 
-		float Epsilon = 5000.0f;
-		float K = 0.000001f;
-		float N = 2.0f;
+		SM::Vector2 BoxZ = { -4.0f, 4.0f };
+		float Epsilon = 0.0f;
+		float K = 0.00001f;
+		
+		float N = 4.0f;
 		float DqScale = 0.1f;
-		float VorticityEpsilon = 0.000005f;
+		float VorticityEpsilon = 0.2f;
 		float ExternalAccel = 0.0f;
+
+		float JitterFactor = 0.005f;
 	};
 
 public:
@@ -45,16 +48,19 @@ public:
 
 	void ToggleWallMovement() { m_bWallMove = !m_bWallMove; }
 
-	int m_MaxSteps = 2;
+	float m_FixedDt = 1.0f / 60.0f;
 private:
-	// Simulation State
+	int m_Substeps = 2;
+	int m_Iterations = 3;
 	bool m_bWallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
-	float m_WallSpeed = 2.5f;
-	float m_WallAmplitude = 2.0f;
-	int m_Iterations = 4;
-	bool m_bReset = false;
+	float m_WallSpeed = 4.0f;
+	float m_WallAmplitude = 4.0f;
+	float m_Spacing = 0.1f;
+
+	bool m_bCornerDamBreak = false;
+	bool m_bDoubleDamBreak = true;
 
 	// Data
 	SimParams m_SimParams;
@@ -71,7 +77,7 @@ private:
 
 	enum HeapDescriptors
 	{
-		// [1] Main UAVs Solver
+		// Main UAVs Solver
 		UAV_IDX_POS_PRED = 0, // u0
 		UAV_IDX_POS_OLD,
 		UAV_IDX_VEL_IN,
@@ -81,18 +87,24 @@ private:
 		UAV_IDX_DELTAPOS,
 		UAV_IDX_VORTICITY,
 		UAV_IDX_GRID_INDICES,
-		UAV_IDX_SORTED_INDICES, // u8
+		UAV_IDX_SORTED_INDICES, // u9
 
-		// [2] Temp UAVs
+		// Diffuse Particles
+		UAV_IDX_DIFFUSE_PARTICLES, // u10
+		UAV_IDX_DIFFUSE_PARTICLES_COMPACTED, //u11
+		UAV_IDX_COUNTERS, // u12
+
+		// Temp UAVs
 		UAV_IDX_TEMP_POS,    // u0
 		UAV_IDX_TEMP_OLD,    // u1
 		UAV_IDX_TEMP_VEL,    // u2
 
-		// [3] Source SRVs
+		// Source SRVs
 		SRV_IDX_POS_PRED,    // t0
 		SRV_IDX_POS_OLD,     // t1
 		SRV_IDX_VEL_IN,      // t2
 		SRV_IDX_INDICES,     // t3
+
 
 		DESCRIPTOR_COUNT
 	};
@@ -118,6 +130,17 @@ private:
 	ComPtr<ID3D12Resource> m_TempPosOld;
 	ComPtr<ID3D12Resource> m_TempVel;
 	ComPtr<ID3D12Resource> m_SortedIndices;
+
+	struct DiffuseParticle
+	{
+		SM::Vector4 PositionLife;
+		SM::Vector4 VelocityType;
+	};
+	UINT m_ZeroValue[1] = { 0 };
+	UINT m_MaxDiffuseParticles = 500000;
+	ComPtr<ID3D12Resource> m_DiffuseParticles;
+	ComPtr<ID3D12Resource> m_DiffuseParticlesCompacted;
+	ComPtr<ID3D12Resource> m_Counters;
 
 	UINT m_CbvSrvUavDescriptorSize = 0;
 	ComPtr<ID3D12DescriptorHeap> m_SrvHeap;
@@ -145,6 +168,7 @@ private:
 	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
 
 	void CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers);
+	void ResetParticlePos();
 	void CreateRenderSrvHeap(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList);
 	void CreateAllViews(ID3D12Device* device);
 	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,

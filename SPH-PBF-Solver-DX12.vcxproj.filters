@@ -244,5 +244,8 @@
     <FxCompile Include="Shaders\Rendering\ShadowPS.hlsl">
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Simulation\DiffuseGenerationCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

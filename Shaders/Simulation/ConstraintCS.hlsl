@@ -16,13 +16,13 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     float3 p = g_PosPred[id] + g_DeltaPos[id];
 
-    float radius = 0.01;
+    float radius = 0.1;
     
     float3 minBox = float3(g_BoxX.x, g_BoxY.x, g_BoxZ.x) + radius;
     float3 maxBox = float3(g_BoxX.y, g_BoxY.y, g_BoxZ.y) - radius;
 
     float randVal = hash(id);
-    float jitter = randVal * 0.001;
+    float jitter = randVal * g_JitterFactor;
 
     if (p.x < minBox.x)
         p.x = minBox.x + jitter;
