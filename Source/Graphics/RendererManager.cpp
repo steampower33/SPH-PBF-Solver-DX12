@@ -36,11 +36,11 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
 
 		auto view = SM::Matrix::CreateLookAt(lightPos, targetPos, up);
 
-		float viewWidth = 20.0f;
-		float viewHeight = 20.0f;
+		float viewWidth = 40.0f;
+		float viewHeight = 40.0f;
 
 		float nearZ = 1.0f;
-		float farZ = 40.0f;
+		float farZ = 100.0f;
 
 		auto proj = SM::Matrix::CreateOrthographic(viewWidth, viewHeight, nearZ, farZ);
 

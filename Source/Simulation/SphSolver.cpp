@@ -382,9 +382,9 @@ void SphSolver::ResetParticlePos()
 
 			m_InitPos.resize(m_NumParticles);
 
-			m_SimParams.BoxX = { -5.0f, 5.0f };
-			m_SimParams.BoxZ = { -5.0f, 5.0f };
-			m_OriginMinX = -5.0f;
+			m_SimParams.BoxX = { -5.5f, 5.5f };
+			m_SimParams.BoxZ = { -5.5f, 5.5f };
+			m_OriginMinX = -5.5f;
 
 			float offset = 0.2f;
 
