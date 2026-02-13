@@ -1,10 +1,13 @@
-#include "Common.hlsli"
+#include "SolverCommon.hlsli"
 
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     uint id = DTid.x;
-    if (id >= g_NumParticles)
+    
+    uint numParticles = g_SP.NumParticles;
+    
+    if (id >= numParticles)
         return;
     
     float3 pi = g_PosPred[id];
@@ -14,8 +17,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
     
     float3 disp = pi - old_pi;
     
-    if (g_DeltaTime > 1e-6f)
-        vi = disp / g_DeltaTime;
+    float dt = g_SP.DeltaTime;
+    
+    if (dt > 1e-6f)
+        vi = disp / dt;
     else
         vi = 0.0f;
 
@@ -25,11 +30,11 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float3 myOmega = g_Vorticity[id];
     float myOmegaLen = length(myOmega);
 
-    float h = g_CellSize;
+    float h = g_SP.CellSize;
     float hSq = h * h;
     
-    float c = g_Viscosity; // XSPH coefficient
-    float epsilon = g_epsilon; // Vorticity confinement coefficient
+    float c = g_SP.Viscosity; // XSPH coefficient
+    float epsilon = g_SP.Epsilon; // Vorticity confinement coefficient
 
     int3 myGridPos = (int3) floor(pi / h) + int3(1000, 1000, 1000);
 
@@ -41,10 +46,11 @@ void main(uint3 DTid : SV_DispatchThreadID)
             {
                 int3 neighborGridPos = myGridPos + int3(x, y, z);
                 
+                uint gridDim = g_SP.GridDim;
                 uint neighborHash = ((uint) (neighborGridPos.x * 73856093) ^
                                      (uint) (neighborGridPos.y * 19349663) ^
-                                     (uint) (neighborGridPos.z * 83492791)) % (g_GridDim * g_GridDim * g_GridDim);
-                
+                                     (uint) (neighborGridPos.z * 83492791)) % (gridDim * gridDim * gridDim);
+
                 uint2 cellRange = g_GridIndices[neighborHash];
                 
                 for (uint j = cellRange.x; j < cellRange.y; ++j)
@@ -82,7 +88,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     // [A] Apply XSPH Viscosity
     // Multiply by volume (mass / rest_density) for physical correctness
-    float volume = g_Mass / g_RestDensity;
+    float volume = g_SP.Mass / g_SP.RestDensity;
     vi += c * viscosityForce * volume;
 
     // [B] Apply Vorticity Confinement
@@ -94,8 +100,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
         
         // Force F = epsilon * (N x omega)
         // Apply force to velocity: v += F * dt
-        float3 vorticityForce = g_vorticityEpsilon * cross(N, myOmega);
-        vi += vorticityForce * g_DeltaTime;
+        float3 vorticityForce = g_SP.VorticityEpsilon * cross(N, myOmega);
+        vi += vorticityForce * dt;
     }
     
     g_VelOut[id] = vi;

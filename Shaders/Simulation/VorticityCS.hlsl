@@ -1,17 +1,20 @@
-#include "Common.hlsli"
+#include "SolverCommon.hlsli"
 
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     uint id = DTid.x;
-    if (id >= g_NumParticles)
+    
+    uint numParticles = g_SP.NumParticles;
+    
+    if (id >= numParticles)
         return;
 
     float3 pi = g_PosPred[id];
     float3 vi = g_VelIn[id];
     float3 vorticity = float3(0, 0, 0);
 
-    float h = g_CellSize;
+    float h = g_SP.CellSize;
     float hSq = h * h;
     int3 myGridPos = (int3) floor(pi / h) + int3(1000, 1000, 1000);
     
@@ -22,10 +25,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
             for (int x = -1; x <= 1; ++x)
             {
                 int3 neighborGridPos = myGridPos + int3(x, y, z);
+                
+                uint gridDim = g_SP.GridDim;
                 uint neighborHash = ((uint) (neighborGridPos.x * 73856093) ^
                                      (uint) (neighborGridPos.y * 19349663) ^
-                                     (uint) (neighborGridPos.z * 83492791)) % (g_GridDim * g_GridDim * g_GridDim);
-                
+                                     (uint) (neighborGridPos.z * 83492791)) % (gridDim * gridDim * gridDim);
+
                 uint2 cellRange = g_GridIndices[neighborHash];
                 
                 for (uint j = cellRange.x; j < cellRange.y; ++j)
@@ -52,6 +57,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
     }
     
-    float volume = g_Mass / g_RestDensity;
+    float volume = g_SP.Mass / g_SP.RestDensity;
     g_Vorticity[id] = vorticity * volume;
 }

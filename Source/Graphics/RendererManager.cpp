@@ -12,16 +12,7 @@ void RendererManager::Update(const SM::Matrix& view, const SM::Matrix& proj, con
 	m_RenderContext.InvView = view.Invert().Transpose();
 	m_RenderContext.InvProj = proj.Invert().Transpose();
 	m_RenderContext.CamPos = camPos;
-}
-
-void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
-{
-	m_RenderContext.CmdList = cmdList;
-
-	m_RenderContext.FrameIndex = m_RenderInitContext.GraphicsCore->m_FrameIndex;
-
-	m_RenderContext.CurrentRTV = m_RenderInitContext.GraphicsCore->GetCurrentBackBufferRTV();
-	m_RenderContext.CurrentDSV = m_RenderInitContext.GraphicsCore->GetDepthStencilView();
+	m_RenderContext.ViewProj = (view * proj).Transpose();
 
 	{
 		SM::Vector3 targetPos = m_RenderContext.TargetPos;
@@ -59,6 +50,16 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
 		m_RenderContext.LightPos = lightPos;
 		m_RenderContext.LightDir = lightDir;
 	}
+}
+
+void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
+{
+	m_RenderContext.CmdList = cmdList;
+
+	m_RenderContext.FrameIndex = m_RenderInitContext.GraphicsCore->m_FrameIndex;
+
+	m_RenderContext.CurrentRTV = m_RenderInitContext.GraphicsCore->GetCurrentBackBufferRTV();
+	m_RenderContext.CurrentDSV = m_RenderInitContext.GraphicsCore->GetDepthStencilView();
 
 	for (auto& pass : m_RenderPasses)
 		pass->RenderDepthOnly(m_RenderContext);
@@ -75,6 +76,19 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
 	CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE)
 	};
 	cmdList->ResourceBarrier(1, b2);
+}
+
+void RendererManager::OnGui()
+{
+	for (auto& pass : m_RenderPasses)
+		pass->OnGui(m_RenderContext);
+
+	if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::DragFloat3("Light Pos", &m_RenderContext.LightPos.x, 0.1f, -100.0f, 100.0f);
+		ImGui::DragFloat3("Target Pos", &m_RenderContext.TargetPos.x, 0.1f, -100.0f, 100.0f);
+		ImGui::DragFloat("ShadowIntensity", &m_RenderContext.ShadowIntensity, 0.01f, 0.0f, 1.0f);
+	}
 }
 
 void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
@@ -118,15 +132,6 @@ void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList
 	m_RenderContext.ShadowSRVHandle = m_ShadowSRVHandle;
 }
 
-void RendererManager::OnGui()
-{
-	for (auto& pass : m_RenderPasses)
-		pass->OnGui(m_RenderContext);
-
-	ImGui::DragFloat3("Light Pos", &m_RenderContext.LightPos.x, 0.1f, -100.0f, 100.0f);
-	ImGui::DragFloat3("Target Pos", &m_RenderContext.TargetPos.x, 0.1f, -100.0f, 100.0f);
-	ImGui::DragFloat("ShadowIntensity", &m_RenderContext.ShadowIntensity, 0.01f, 0.0f, 1.0f);
-}
 
 void RendererManager::CreateShadowResources(const RenderInitContext& ctx)
 {

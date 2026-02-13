@@ -176,6 +176,15 @@
     <None Include="Shaders\Rendering\RenderCommon.hlsli">
       <Filter>Shaders\Rendering</Filter>
     </None>
+    <None Include="Shaders\Simulation\SolverCommon.hlsli">
+      <Filter>Shaders\Simulation</Filter>
+    </None>
+    <None Include="Shaders\Simulation\DiffuseCommon.hlsli">
+      <Filter>Shaders\Simulation</Filter>
+    </None>
+    <None Include="Shaders\Simulation\Hash.hlsli">
+      <Filter>Shaders\Simulation</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Simulation\BitonicSortCS.hlsl">
@@ -246,6 +255,24 @@
     </FxCompile>
     <FxCompile Include="Shaders\Simulation\DiffuseGenerationCS.hlsl">
       <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\BuildDispatchArgsCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\UpdateDiffuseCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CopyDiffuseCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\BuildDrawArgsCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\DiffuseVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\DiffusePS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

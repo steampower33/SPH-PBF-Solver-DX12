@@ -13,8 +13,10 @@ void SSFRPass::Render(const RenderContext& ctx)
 		m_CompositeParams.ShadowTransform = ctx.ShadowTransform;
 		m_CompositeParams.CamPos = ctx.CamPos;
 		m_CompositeParams.ShadowIntensity = ctx.ShadowIntensity;
-		//m_CompositeParams.LightPos = ctx.LightPos;
-		//m_CompositeParams.LightDir = ctx.LightDir;
+
+		m_DiffuseParams.ViewProj = ctx.ViewProj;
+		m_DiffuseParams.InvView = ctx.InvView;
+		m_DiffuseParams.InvProj = ctx.InvProj;
 	}
 
 	if (m_bDebugDrawParticles)
@@ -27,6 +29,9 @@ void SSFRPass::Render(const RenderContext& ctx)
 		RenderFluidSmooth(ctx);
 		RenderFluidThickness(ctx);
 		RenderFluidComposite(ctx);
+
+		if (ctx.Solver->m_bSolveDiffuseParticles)
+			RenderDiffuse(ctx);
 	}
 }
 
@@ -55,15 +60,18 @@ void SSFRPass::RenderDepthOnly(const RenderContext& ctx)
 	cmdList->SetGraphicsRootSignature(m_ShadowRootSig.Get());
 	cmdList->SetPipelineState(m_ShadowPSO.Get());
 
-	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	m_LightParams.LightView = ctx.LightView;
 	m_LightParams.LightProj = ctx.LightProj;
 	m_LightParams.VisualRadius = ctx.Globals.VisualRadius;
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(LightParams) / 4, &m_LightParams, 0);
-	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+
+	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
+	ID3D12DescriptorHeap* heaps[] = { globalHeap };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
+	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -81,8 +89,8 @@ void SSFRPass::RenderDepthOnly(const RenderContext& ctx)
 
 void SSFRPass::OnGui(RenderContext& ctx)
 {
-    if (ImGui::CollapsingHeader("SSFR Visualization", ImGuiTreeNodeFlags_DefaultOpen))
-    {
+	if (ImGui::CollapsingHeader("SSFR Visualization", ImGuiTreeNodeFlags_DefaultOpen))
+	{
 		ImGui::Checkbox("Debug: Draw Particles (Heatmap)", &m_bDebugDrawParticles);
 
 		ImGui::Separator();
@@ -105,7 +113,13 @@ void SSFRPass::OnGui(RenderContext& ctx)
 			ImGui::DragFloat("Sigma Spatial", &m_BlurParams.SigmaSpatial, 0.1f, 0.1f, 50.0f);
 			ImGui::DragFloat("Sigma Range", &m_BlurParams.SigmaRange, 0.01f, 0.01f, 10.0f);
 		}
-    }
+	}
+
+	if (ImGui::CollapsingHeader("DiffuseParticles", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::DragFloat("DiffuseScale", &m_DiffuseParams.Scale, 0.001f, 0.0f, 1.0f, "%.3f");
+		ImGui::DragFloat("BaseAlpha", &m_DiffuseParams.BaseAlpha, 0.001f, 0.0f, 1.0f, "%.3f");
+	}
 }
 
 // =========================================================
@@ -129,11 +143,16 @@ void SSFRPass::RenderParticles(const RenderContext& ctx)
 	cmdList->SetGraphicsRootSignature(m_RenderParticleRootSig.Get());
 	cmdList->SetPipelineState(m_RenderParticlePSO.Get());
 
-	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
+	ID3D12DescriptorHeap* heaps[] = { globalHeap };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
+	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE densityHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetDensitySrvIndex(), solver->GetDescriptorSize());
+	cmdList->SetGraphicsRootDescriptorTable(2, densityHandle);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -170,12 +189,13 @@ void SSFRPass::RenderFluidDepth(const RenderContext& ctx)
 	cmdList->SetPipelineState(m_FluidDepthPSO.Get());
 
 	// Bind Solver Resources (Particles)
-	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
+	ID3D12DescriptorHeap* heaps[] = { globalHeap };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
-
+	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
+	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
 	// Draw Quad Instances
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -266,11 +286,13 @@ void SSFRPass::RenderFluidThickness(const RenderContext& ctx)
 	cmdList->SetPipelineState(m_FluidThicknessPSO.Get());
 
 	// Bind Solver Resources
-	ID3D12DescriptorHeap* heaps[] = { solver->GetSrvHeap() };
+	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
+	ID3D12DescriptorHeap* heaps[] = { globalHeap };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	cmdList->SetGraphicsRootDescriptorTable(1, solver->GetSrvHeap()->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
+	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -343,70 +365,116 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	cmdList->ResourceBarrier(1, &barrierEnd);
 }
 
+void SSFRPass::RenderDiffuse(const RenderContext& ctx)
+{
+	auto cmdList = ctx.CmdList;
+	auto solver = ctx.Solver;
+
+	//const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	//cmdList->ClearRenderTargetView(ctx.CurrentRTV, clearColor, 0, nullptr);
+	//cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+	//cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
+
+	//cmdList->RSSetViewports(1, &ctx.Viewport);
+	//cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
+
+	cmdList->SetGraphicsRootSignature(m_DiffuseRootSig.Get());
+	cmdList->SetPipelineState(m_DiffusePSO.Get());
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(DiffuseParams) / 4, &m_DiffuseParams, 0);
+
+	ID3D12DescriptorHeap* heaps[] = { solver->GetGlobalHeap() };
+	cmdList->SetDescriptorHeaps(1, heaps);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
+		solver->GetGlobalHeap()->GetGPUDescriptorHandleForHeapStart(),
+		solver->GetDiffuseSrvIndex(),
+		solver->GetDescriptorSize()
+	);
+	cmdList->SetGraphicsRootDescriptorTable(1, srvHandle);
+
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->ExecuteIndirect(
+
+		solver->GetDrawCommandSignature(),
+		1,
+		solver->GetDrawArgsBuffer(),
+		0,
+		nullptr, 0
+	);
+}
 // =========================================================
 // Initialization Functions
 // =========================================================
 
 void SSFRPass::CreateShaders(const RenderInitContext& ctx)
 {
-    auto helper = ctx.ShaderHelper;
+	auto helper = ctx.ShaderHelper;
 
-    m_ParticleVS = helper->Compile(m_ShaderBaseName, L"ParticleVS.hlsl", L"main", L"vs_6_0");
-    m_ParticlePS = helper->Compile(m_ShaderBaseName, L"ParticlePS.hlsl", L"main", L"ps_6_0");
-    m_FluidDepthPS = helper->Compile(m_ShaderBaseName, L"FluidDepthPS.hlsl", L"main", L"ps_6_0");
+	m_ParticleVS = helper->Compile(m_ShaderBaseName, L"ParticleVS.hlsl", L"main", L"vs_6_0");
+	m_ParticlePS = helper->Compile(m_ShaderBaseName, L"ParticlePS.hlsl", L"main", L"ps_6_0");
+	m_FluidDepthPS = helper->Compile(m_ShaderBaseName, L"FluidDepthPS.hlsl", L"main", L"ps_6_0");
 
-    m_FluidSmoothPS = helper->Compile(m_ShaderBaseName, L"FluidSmooth.hlsl", L"main", L"ps_6_0");
-    m_FluidThicknessPS = helper->Compile(m_ShaderBaseName, L"FluidThicknessPS.hlsl", L"main", L"ps_6_0");
-    m_FluidCompositePS = helper->Compile(m_ShaderBaseName, L"FluidComposite.hlsl", L"main", L"ps_6_0");
+	m_FluidSmoothPS = helper->Compile(m_ShaderBaseName, L"FluidSmooth.hlsl", L"main", L"ps_6_0");
+	m_FluidThicknessPS = helper->Compile(m_ShaderBaseName, L"FluidThicknessPS.hlsl", L"main", L"ps_6_0");
+	m_FluidCompositePS = helper->Compile(m_ShaderBaseName, L"FluidComposite.hlsl", L"main", L"ps_6_0");
 
 	m_ShadowVS = helper->Compile(L"./Shaders/Rendering/", L"ShadowVS.hlsl", L"main", L"vs_6_0");
 	m_ShadowPS = helper->Compile(L"./Shaders/Rendering/", L"ShadowPS.hlsl", L"main", L"ps_6_0");
+
+	m_DiffuseVS = helper->Compile(m_ShaderBaseName, L"DiffuseVS.hlsl", L"main", L"vs_6_0");
+	m_DiffusePS = helper->Compile(m_ShaderBaseName, L"DiffusePS.hlsl", L"main", L"ps_6_0");
 }
 
 void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 {
-    auto device = ctx.Device;
+	auto device = ctx.Device;
 
-    D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
-    featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
-    if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
-        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+	D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+	featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+	if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+		featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 
-    // Particle / Depth / Thickness (Shared)
-    {
-        CD3DX12_ROOT_PARAMETER1 params[2];
-        params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+	// Particle / Depth / Thickness (Shared)
+	{
+		CD3DX12_ROOT_PARAMETER1 params[3];
+		params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
-        CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-        params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+		CD3DX12_DESCRIPTOR_RANGE1 srvRangePos;
+		srvRangePos.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		params[1].InitAsDescriptorTable(1, &srvRangePos, D3D12_SHADER_VISIBILITY_VERTEX);
 
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-        desc.Init_1_1(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		CD3DX12_DESCRIPTOR_RANGE1 srvRangeDen;
+		srvRangeDen.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		params[2].InitAsDescriptorTable(1, &srvRangeDen, D3D12_SHADER_VISIBILITY_VERTEX);
 
-        Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidDepthRootSig, "FluidDepthRootSig");
-    }
-    m_RenderParticleRootSig = m_FluidDepthRootSig;
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    // Smooth
-    {
-        CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidDepthRootSig, "FluidDepthRootSig");
+	}
+	m_RenderParticleRootSig = m_FluidDepthRootSig;
 
-        CD3DX12_ROOT_PARAMETER1 params[2];
-        params[0].InitAsConstants(sizeof(BlurParams) / 4, 0);
-        params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+	// Smooth
+	{
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-        D3D12_STATIC_SAMPLER_DESC sampler = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+		CD3DX12_ROOT_PARAMETER1 params[2];
+		params[0].InitAsConstants(sizeof(BlurParams) / 4, 0);
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-        desc.Init_1_1(2, params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		D3D12_STATIC_SAMPLER_DESC sampler = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
-        Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidSmoothRootSig, "FluidSmoothRootSig");
-    }
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(_countof(params), params, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    // Composite
-    {
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidSmoothRootSig, "FluidSmoothRootSig");
+	}
+
+	// Composite
+	{
 		CD3DX12_DESCRIPTOR_RANGE1 fluidRange;
 		fluidRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
 
@@ -418,15 +486,15 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 		params[1].InitAsDescriptorTable(1, &fluidRange, D3D12_SHADER_VISIBILITY_PIXEL);
 		params[2].InitAsDescriptorTable(1, &sceneRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
-        D3D12_STATIC_SAMPLER_DESC samplers[2];
-        samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
-        samplers[1] = CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+		D3D12_STATIC_SAMPLER_DESC samplers[2];
+		samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+		samplers[1] = CD3DX12_STATIC_SAMPLER_DESC(1, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
 
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-        desc.Init_1_1(__crt_countof(params), params, __crt_countof(samplers), samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(_countof(params), params, __crt_countof(samplers), samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-        Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidCompositeRootSig, "FluidCompositeRootSig");
-    }
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_FluidCompositeRootSig, "FluidCompositeRootSig");
+	}
 
 	// ShadowMap
 	{
@@ -438,145 +506,160 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-		desc.Init_1_1(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		desc.Init_1_1(_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_ShadowRootSig, "m_ShadowRootSig");
+	}
+
+	// DiffseParticle
+	{
+		CD3DX12_ROOT_PARAMETER1 params[2];
+		params[0].InitAsConstants(sizeof(DiffuseParams) / 4, 0); // b0
+
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0 (Particle Buffer)
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Helpers::CreateRootSignature(ctx.Device, desc, D3D_ROOT_SIGNATURE_VERSION_1_1, m_DiffuseRootSig, "m_DiffuseRootSig");
 	}
 }
 
 void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 {
-    auto device = ctx.Device;
+	auto device = ctx.Device;
 
-    D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
-        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-        { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-    };
+	D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
 
-    // 1. Particle Render
-    {
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
-        psoDesc.pRootSignature = m_RenderParticleRootSig.Get();
+	// 1. Particle Render
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+		psoDesc.pRootSignature = m_RenderParticleRootSig.Get();
 
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_ParticlePS->GetBufferPointer(), m_ParticlePS->GetBufferSize());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_ParticlePS->GetBufferPointer(), m_ParticlePS->GetBufferSize());
 
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.SampleDesc.Count = 1;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
 
-        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_RenderParticlePSO)));
-    }
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_RenderParticlePSO)));
+	}
 
-    // 2. Fluid Depth
-    {
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
-        psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
+	// 2. Fluid Depth
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+		psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
 
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidDepthPS->GetBufferPointer(), m_FluidDepthPS->GetBufferSize());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidDepthPS->GetBufferPointer(), m_FluidDepthPS->GetBufferSize());
 
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-        psoDesc.DepthStencilState.DepthEnable = TRUE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
-        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.SampleDesc.Count = 1;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		psoDesc.DepthStencilState.DepthEnable = TRUE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
 
-        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidDepthPSO)));
-    }
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidDepthPSO)));
+	}
 
-    // 3. Fluid Smooth
-    {
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.pRootSignature = m_FluidSmoothRootSig.Get();
+	// 3. Fluid Smooth
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.pRootSignature = m_FluidSmoothRootSig.Get();
 
 		auto FullScreenQuadVS = ctx.ShaderHelper->GetFullScreenQuadVS();
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(FullScreenQuadVS->GetBufferPointer(), FullScreenQuadVS->GetBufferSize());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidSmoothPS->GetBufferPointer(), m_FluidSmoothPS->GetBufferSize());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(FullScreenQuadVS->GetBufferPointer(), FullScreenQuadVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidSmoothPS->GetBufferPointer(), m_FluidSmoothPS->GetBufferSize());
 
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.SampleDesc.Count = 1;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthEnable = FALSE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
 
-        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidSmoothPSO)));
-    }
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidSmoothPSO)));
+	}
 
-    // 4. Fluid Thickness
-    {
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
-        psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
+	// 4. Fluid Thickness
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { inputLayout, _countof(inputLayout) };
+		psoDesc.pRootSignature = m_FluidDepthRootSig.Get();
 
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidThicknessPS->GetBufferPointer(), m_FluidThicknessPS->GetBufferSize());
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_ParticleVS->GetBufferPointer(), m_ParticleVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidThicknessPS->GetBufferPointer(), m_FluidThicknessPS->GetBufferSize());
 
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 
-        D3D12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        blendDesc.RenderTarget[0].BlendEnable = TRUE;
-        blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
-        blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
-        blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-        blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-        blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-        blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-        blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED;
-        psoDesc.BlendState = blendDesc;
+		D3D12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_RED;
+		psoDesc.BlendState = blendDesc;
 
 		psoDesc.DepthStencilState.DepthEnable = FALSE;
 		psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
 		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
-        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.SampleDesc.Count = 1;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
 
-        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidThicknessPSO)));
-    }
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidThicknessPSO)));
+	}
 
-    // 5. Composite
-    {
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.pRootSignature = m_FluidCompositeRootSig.Get();
+	// 5. Composite
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.pRootSignature = m_FluidCompositeRootSig.Get();
 
 		auto FullScreenQuadVS = ctx.ShaderHelper->GetFullScreenQuadVS();
 		psoDesc.VS = CD3DX12_SHADER_BYTECODE(FullScreenQuadVS->GetBufferPointer(), FullScreenQuadVS->GetBufferSize());
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidCompositePS->GetBufferPointer(), m_FluidCompositePS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_FluidCompositePS->GetBufferPointer(), m_FluidCompositePS->GetBufferSize());
 
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.SampleDesc.Count = 1;
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthEnable = FALSE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
 
-        ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidCompositePSO)));
-    }
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_FluidCompositePSO)));
+	}
 
 	// Shadow
 	{
@@ -604,6 +687,38 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 		psoDesc.SampleDesc.Count = 1;
 
 		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_ShadowPSO)));
+	}
+
+	// Diffuse
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.InputLayout = { nullptr, 0 };
+		psoDesc.pRootSignature = m_DiffuseRootSig.Get();
+
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(m_DiffuseVS->GetBufferPointer(), m_DiffuseVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_DiffusePS->GetBufferPointer(), m_DiffusePS->GetBufferSize());
+
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+
+		D3D12_BLEND_DESC blendDesc = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+		psoDesc.BlendState = blendDesc;
+
+		psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
+
+		ThrowIfFailed(ctx.Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_DiffusePSO)));
 	}
 }
 
@@ -651,7 +766,7 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 		rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		ThrowIfFailed(device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&m_FluidRtvHeap)));
-		
+
 		D3D12_DESCRIPTOR_HEAP_DESC srvDesc = {};
 		srvDesc.NumDescriptors = 5 * GraphicsCore::FrameCount; // 0,1,2: Fluid / 3,4: Scene
 		srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;

@@ -42,12 +42,17 @@ private:
         float VisualRadius;
     } m_LightParams;
 
+    struct DiffuseParams {
+        SM::Matrix ViewProj;
+        SM::Matrix InvView;
+        SM::Matrix InvProj;
+        float Scale = 0.01f;
+        float BaseAlpha = 0.1f;
+    } m_DiffuseParams;
+
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";
 
     bool m_bDebugDrawParticles = false;
-
-    ComPtr<ID3D12DescriptorHeap> m_FluidRtvHeap;
-    ComPtr<ID3D12DescriptorHeap> m_FluidSrvHeap;
 
     ComPtr<ID3D12Resource> m_QuadVB;
     ComPtr<ID3D12Resource> m_QuadIB;
@@ -63,41 +68,36 @@ private:
     ComPtr<IDxcBlob> m_FluidCompositePS;
     ComPtr<IDxcBlob> m_ShadowVS;
     ComPtr<IDxcBlob> m_ShadowPS;
+    ComPtr<IDxcBlob> m_DiffuseVS;
+    ComPtr<IDxcBlob> m_DiffusePS;
 
-    // [Step 1] Particle Depth (Linear Depth)
+    ComPtr<ID3D12DescriptorHeap> m_FluidRtvHeap;
+    ComPtr<ID3D12DescriptorHeap> m_FluidSrvHeap;
     ComPtr<ID3D12Resource> m_FluidDepthTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidDepthRtvHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidDepthSrvHandle;
-
-    ComPtr<ID3D12RootSignature> m_RenderParticleRootSig;
-    ComPtr<ID3D12PipelineState> m_RenderParticlePSO;
-
-    ComPtr<ID3D12RootSignature> m_FluidDepthRootSig;
-    ComPtr<ID3D12PipelineState> m_FluidDepthPSO;
-
-    // [Step 2] Depth Blur (Smoothing)
     ComPtr<ID3D12Resource> m_BlurTempTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_BlurTempRtvHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_BlurTempSrvHandle;
-
-    ComPtr<ID3D12RootSignature> m_FluidSmoothRootSig;
-    ComPtr<ID3D12PipelineState> m_FluidSmoothPSO;
-
-    // [Step 3] Thickness
     ComPtr<ID3D12Resource> m_FluidThicknessTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidThicknessRtvHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidThicknessSrvHandle;
 
-    ComPtr<ID3D12RootSignature> m_FluidThicknessRootSig;
-    ComPtr<ID3D12PipelineState> m_FluidThicknessPSO;
-
-    // [Step 4] Final Composite
-    ComPtr<ID3D12RootSignature> m_FluidCompositeRootSig;
-    ComPtr<ID3D12PipelineState> m_FluidCompositePSO;
-
-    // Shadow
     ComPtr<ID3D12RootSignature> m_ShadowRootSig;
+    ComPtr<ID3D12RootSignature> m_RenderParticleRootSig;
+    ComPtr<ID3D12RootSignature> m_FluidDepthRootSig;
+    ComPtr<ID3D12RootSignature> m_FluidSmoothRootSig;
+    ComPtr<ID3D12RootSignature> m_FluidThicknessRootSig;
+    ComPtr<ID3D12RootSignature> m_FluidCompositeRootSig;
+    ComPtr<ID3D12RootSignature> m_DiffuseRootSig;
+
     ComPtr<ID3D12PipelineState> m_ShadowPSO;
+    ComPtr<ID3D12PipelineState> m_RenderParticlePSO;
+    ComPtr<ID3D12PipelineState> m_FluidDepthPSO;
+    ComPtr<ID3D12PipelineState> m_FluidSmoothPSO;
+    ComPtr<ID3D12PipelineState> m_FluidThicknessPSO;
+    ComPtr<ID3D12PipelineState> m_FluidCompositePSO;
+    ComPtr<ID3D12PipelineState> m_DiffusePSO;
 
     virtual void CreateShaders(const RenderInitContext& ctx) override;
     virtual void CreateRootSignatures(const RenderInitContext& ctx)override;
@@ -109,4 +109,5 @@ private:
     void RenderFluidSmooth(const RenderContext& ctx);
     void RenderFluidThickness(const RenderContext& ctx);
     void RenderFluidComposite(const RenderContext& ctx);
+    void RenderDiffuse(const RenderContext& ctx);
 };

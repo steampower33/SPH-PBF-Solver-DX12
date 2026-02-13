@@ -1,98 +1,149 @@
-#include "Common.hlsli"
-
-static const uint g_MaxDiffuseParticles = 500000;
+#include "DiffuseCommon.hlsli"
 
 float GetPotential(float val, float minVal, float maxVal)
 {
     return saturate((val - minVal) / (maxVal - minVal));
 }
 
-[numthreads(256, 1, 1)]
-void GenerateDiffuse(uint3 DTid : SV_DispatchThreadID)
+float3 CalculateOrthonormal(float3 dir)
 {
-    uint i = DTid.x;
-    if (i >= g_NumParticles)
+    if (length(dir) < 1e-5)
+        return float3(1, 0, 0);
+    
+    dir = normalize(dir);
+    float3 right = cross(float3(0, 1, 0), dir);
+    if (length(right) < 1e-5)
+        right = cross(float3(1, 0, 0), dir);
+    return normalize(right);
+}
+
+[numthreads(256, 1, 1)]
+void main(uint3 DTid : SV_DispatchThreadID)
+{
+    uint id = DTid.x;
+    uint numParticles = g_SP.NumParticles;
+    
+    if (id >= numParticles)
         return;
 
-    float3 pi = g_PosPred[i];
-    float3 vi = g_VelOut[i];
-    
-    float h = g_CellSize;
-    int3 myGridPos = (int3) floor(pi / h) + int3(1000, 1000, 1000);
-    
+    if (id == 0)
+        g_Counters[1] = 0;
+
+    float3 pi = g_PosPred[id];
+    float3 vi = g_VelOut[id];
+    float dt = g_DP.DiffuseDeltaTime;
+
+    float gridH = g_SP.CellSize;
+
+    float checkH = g_SP.CellSize * g_DP.CellSizeScale;
+    float checkHSq = checkH * checkH;
+
     float v_diff = 0.0;
-    for (int z = -1; z <= 1; ++z)
+    float3 normal = 0.0;
+    
+    int3 myGridPos = (int3) floor(pi / gridH) + int3(1000, 1000, 1000);
+    
+    int neighbourCount = 0;
+    bool stopSearch = false;
+    for (int z = -1; z <= 1 && !stopSearch; ++z)
     {
-        for (int y = -1; y <= 1; ++y)
+        for (int y = -1; y <= 1 && !stopSearch; ++y)
         {
-            for (int x = -1; x <= 1; ++x)
+            for (int x = -1; x <= 1 && !stopSearch; ++x)
             {
+                if (neighbourCount >= g_DP.BubbleClassifyMinNeighbours)
+                {
+                    stopSearch = true;
+                    break;
+                }
                 
                 int3 neighborGridPos = myGridPos + int3(x, y, z);
-                
+                uint gridDim = g_SP.GridDim;
                 uint neighborHash = ((uint) (neighborGridPos.x * 73856093) ^
                                      (uint) (neighborGridPos.y * 19349663) ^
-                                     (uint) (neighborGridPos.z * 83492791)) % (g_GridDim * g_GridDim * g_GridDim);
-                
+                                     (uint) (neighborGridPos.z * 83492791)) % (gridDim * gridDim * gridDim);
                 uint2 cellRange = g_GridIndices[neighborHash];
-                
+
                 for (uint j = cellRange.x; j < cellRange.y; ++j)
                 {
-                    if (i == j)
+                    if (id == j)
                         continue;
-                    
                     float3 pj = g_PosPred[j];
-                    float3 vj = g_VelOut[j];
-                    
-                    float3 p_ij = pi - pj;
-                    float dist = length(p_ij);
-                    float3 v_ij = vi - vj;
-                    
-                    float3 dir_p = normalize(p_ij);
-                    float3 dir_v = normalize(v_ij);
-                    
-                    float impact = length(v_ij) * (1.0 - dot(dir_v, dir_p));
-                    
-                    float W = max(0.0, 1.0 - dist / g_CellSize);
-                    
-                    v_diff += impact * W;
+                    float3 rVec = pi - pj;
+                    float rSq = dot(rVec, rVec);
 
+                    if (rSq < checkHSq && rSq > 1e-6)
+                    {
+                        float r = sqrt(rSq);
+                        float3 dir_p = rVec / r;
+                        
+                        float3 v_ij = vi - g_VelOut[j];
+                        float3 dir_v = normalize(v_ij);
+                        float impact = length(v_ij) * (1.0 - dot(dir_v, dir_p));
+                        float W = max(0.0, 1.0 - r / gridH);
+                        v_diff += impact * W;
+                        normal += dir_p * SpikyKernelGrad(r, gridH);
+                        
+                        neighbourCount++;
+                    }
                 }
             }
         }
     }
-    
-    // 1. 잠재력(Potential) 계산 (I_ta, I_wc, I_k)
-    float I_ta = GetPotential(v_diff, g_TrappedAirMin, g_TrappedAirMax);
-    
-    // 2. 생성 개수 계산
-    float n_d = I_k * (k_ta * I_ta + k_wc * I_wc) * dt;
-    uint count = (uint) n_d;
-    if (frac(n_d) > Random(i))
-        count++;
 
-    // 3. 생성 (공간 확보)
-    if (count > 0)
+    float I_ta = GetPotential(v_diff, g_DP.TrappedAirMin, g_DP.TrappedAirMax);
+    
+    float3 n_hat = normalize(normal);
+    float curvature = saturate(dot(normalize(vi), n_hat));
+    float I_wc = GetPotential(curvature, g_DP.WaveCrestMin, g_DP.WaveCrestMax);
+    if (dot(normalize(vi), n_hat) < 0.6)
     {
-        // 현재 확산 입자 수 확인 (꽉 찼으면 생성 불가)
-        if (g_Counters[0] >= g_MaxDiffuseParticles)
-            return;
+        I_wc = 0;
+    }
+    float energy = 0.5 * dot(vi, vi);
+    float I_k = GetPotential(energy, g_DP.EnergyMin, g_DP.EnergyMax);
 
-        // 생성할 공간 예약 (Atomic)
+    float n_d = (g_DP.kTa * I_ta + g_DP.kWc * I_wc) * I_k * dt;
+    n_d = min(n_d, 32.0);
+    
+    uint rngState = WangHash(id + uint(dt * 12345.0) + asuint(pi.x));
+    
+    int spawnCount = (int) n_d;
+    float remainder = n_d - spawnCount;
+    if (Random01(rngState) < remainder)
+        spawnCount++;
+
+    if (spawnCount > 0)
+    {
         uint startIndex;
-        InterlockedAdd(g_Counters[0], count, startIndex);
+        InterlockedAdd(g_Counters[0], spawnCount, startIndex);
 
-        // 예약된 공간이 Max를 넘지 않는지 체크
-        if (startIndex + count <= g_MaxDiffuseParticles)
+        int countToSpawn = min(spawnCount, (int) g_DP.MaxDiffuseParticles - (int) startIndex);
+        
+        if (countToSpawn > 0)
         {
-            for (uint k = 0; k < count; ++k)
+            float3 cylinderBase = pi;
+            float3 cylinderTop = pi + vi * dt;
+            float3 axisU = CalculateOrthonormal(vi);
+            float3 axisV = normalize(cross(axisU, normalize(vi + 1e-5)));
+            float rVal = checkH;
+
+            for (int k = 0; k < countToSpawn; ++k)
             {
+                float randDist = sqrt(Random01(rngState)); // 0 ~ 1
+                float randAngle = Random01(rngState) * 2.0 * 3.14159; // 0 ~ 2 pi
+                float randHeight = Random01(rngState); // 0 ~ 1
+
+                float3 radialOffset = rVal * randDist * (cos(randAngle) * axisU + sin(randAngle) * axisV);
+                float3 spawnPos = cylinderBase + radialOffset + (cylinderTop - cylinderBase) * randHeight;
+
                 DiffuseParticle p;
-                p.position = InitPosition(i); // 원통형 샘플링
-                p.velocity = InitVelocity(i);
-                p.life = g_MaxLifeTime;
-                p.type = TYPE_FOAM; // 일단 Foam으로 시작
-                
+                p.PositionLife.xyz = spawnPos;
+                p.PositionLife.w = lerp(1.0, g_DP.MaxLifeTime, Random01(rngState));
+
+                p.VelocityScale.xyz = vi + radialOffset;
+                p.VelocityScale.w = 0;
+
                 g_DiffuseParticles[startIndex + k] = p;
             }
         }

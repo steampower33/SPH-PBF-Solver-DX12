@@ -11,7 +11,7 @@
 #include <memory>
 #include <iostream>
 #include <algorithm>
-#include <assert.h>
+#include <cassert>
 #include <filesystem>
 #include <fstream>
 #include <random>

@@ -1,68 +1,34 @@
+#ifndef COMMON_HLSLI
+#define COMMON_HLSLI
 
-RWStructuredBuffer<float3> g_PosPred       : register(u0);
-RWStructuredBuffer<float3> g_PosOld        : register(u1);
-RWStructuredBuffer<float3> g_VelIn         : register(u2);
-RWStructuredBuffer<float3> g_VelOut        : register(u3);
-RWStructuredBuffer<float>  g_Density       : register(u4);
-RWStructuredBuffer<float>  g_Lambda        : register(u5);
-RWStructuredBuffer<float3> g_DeltaPos      : register(u6);
-RWStructuredBuffer<float3> g_Vorticity     : register(u7);
-RWStructuredBuffer<uint2>  g_GridIndices   : register(u8);
-RWStructuredBuffer<uint>   g_SortedIndices : register(u9);
-
-struct DiffuseParticle
+struct SimParams
 {
-    float4 PositionLife;
-    float4 VelocityType;
-};
-RWStructuredBuffer<DiffuseParticle> g_DiffuseParticles : register(u10);
-RWStructuredBuffer<DiffuseParticle> g_DiffuseParticlesCompacted : register(u11);
-RWStructuredBuffer<uint> g_Counters : register(u12);
-
-// Simulation Constants
-cbuffer SimParams : register(b0)
-{
-    float g_DeltaTime;
-    uint g_NumParticles;
-    float g_CellSize;
-    uint g_GridDim;
+    uint NumParticles;
+    float DeltaTime;
+    float CellSize;
+    uint GridDim;
     
-    float g_Mass;
-    float g_RestDensity;
-    float g_Viscosity;
-    float g_GravityY;
+    float Mass;
+    float RestDensity;
+    float Viscosity;
+    float GravityY;
 
-    float2 g_BoxX;
-    float2 g_BoxY;
+    float2 BoxX;
+    float2 BoxY;
 
-    float2 g_BoxZ;
-    float g_epsilon;
-    float g_k;
+    float2 BoxZ;
+    float Epsilon;
+    float k;
 
-    float g_n;
-    float g_dqScale;
-    float g_vorticityEpsilon;
-    float g_externalAccel;
+    float n;
+    float DqScale;
+    float VorticityEpsilon;
+    float ExternalAccel;
     
-    float g_JitterFactor;
+    float JitterFactor;
 };
 
-// [Core Logic] 3D Position -> 1D Grid Hash
-// This maps a 3D coordinate to a unique 1D cell ID.
-// Using Prime Numbers to minimize collisions.
-uint GetGridHash(float3 pos)
-{
-    int3 gridPos = (int3) floor(pos / g_CellSize);
-    
-    // Handle negative coordinates simply by adding a large offset or abs (Simple approach)
-    // Better: use unsigned wrap-around logic
-    gridPos += int3(1000, 1000, 1000);
-    
-    // Primes: 73856093, 19349663, 83492791
-    return ((uint) (gridPos.x * 73856093) ^
-            (uint) (gridPos.y * 19349663) ^
-            (uint) (gridPos.z * 83492791)) % (g_GridDim * g_GridDim * g_GridDim);
-}
+#include "Hash.hlsli"
 
 #define DIMENSION_3D
 #define PI 3.14159265359
@@ -140,4 +106,6 @@ float SpikyKernelGrad(float r, float h)
     }
     return 0.0f;
 }
+#endif
+
 #endif

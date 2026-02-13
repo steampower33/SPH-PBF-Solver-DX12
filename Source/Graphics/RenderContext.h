@@ -38,9 +38,10 @@ struct RenderContext
         SM::Matrix View;
         SM::Matrix Proj;
         float VisualRadius = 0.05f;
-        float ThicknessCoeff = 0.05f;
+        float ThicknessCoeff = 0.10f;
     } Globals;
 
+    SM::Matrix ViewProj;
     SM::Matrix InvView;
     SM::Matrix InvProj;
     SM::Vector3 CamPos;
@@ -52,7 +53,7 @@ struct RenderContext
     SM::Matrix LightView;
     SM::Matrix LightProj;
     SM::Matrix ShadowTransform;
-    float ShadowIntensity = 0.7f;
+    float ShadowIntensity = 0.8f;
 
     ComPtr<ID3D12DescriptorHeap> ShadowSRVHeap;
 

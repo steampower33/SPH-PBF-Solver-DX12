@@ -1,14 +1,20 @@
-#include "Common.hlsli"
+#include "SolverCommon.hlsli"
 
 [numthreads(256, 1, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
     uint id = DTid.x;
-    if (id >= g_NumParticles)
+    
+    uint numParticles = g_SP.NumParticles;
+    
+    if (id >= numParticles)
         return;
-
+    
+    float h = g_SP.CellSize;
+    uint gridDim = g_SP.GridDim;
+    
     float3 myPos = g_PosPred[id];
-    uint myHash = GetGridHash(myPos);
+    uint myHash = GetGridHash(myPos, h, gridDim);
 
     // Boundary Check
     if (id == 0)
@@ -19,7 +25,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     // Compare with Prev
     float3 prevPos = g_PosPred[id - 1];
-    uint prevHash = GetGridHash(prevPos);
+    uint prevHash = GetGridHash(prevPos, h, gridDim);
 
     if (myHash != prevHash)
     {
@@ -30,8 +36,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
         g_GridIndices[prevHash].y = id;
     }
     
-    if (id == g_NumParticles - 1)
+    if (id == numParticles - 1)
     {
-        g_GridIndices[myHash].y = g_NumParticles;
+        g_GridIndices[myHash].y = numParticles;
     }
 }
