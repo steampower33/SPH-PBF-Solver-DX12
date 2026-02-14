@@ -29,7 +29,7 @@ public:
 		float VorticityEpsilon = 0.2f;
 		float ExternalAccel = 0.0f;
 
-		float JitterFactor = 0.001f;
+		float JitterFactor = 0.010f;
 	} m_SimParams;
 
 	bool m_bSolveDiffuseParticles = true;
@@ -58,12 +58,12 @@ public:
 
 	float m_FixedDt = 1.0f / 60.0f;
 private:
-	int m_Substeps = 2;
-	int m_Iterations = 3;
+	int m_Substeps = 1;
+	int m_Iterations = 2;
 	bool m_bWallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
-	float m_WallSpeed = 4.0f;
+	float m_WallSpeed = 2.0f;
 	float m_WallAmplitude = 4.0f;
 	float m_Spacing = 0.1f;
 
@@ -160,10 +160,10 @@ private:
 
 		float EnergyMin = 10.0f;
 		float EnergyMax = 20.0f;
-		float MaxLifeTime = 1.0f;
+		float MaxLifeTime = 4.0f;
 		float CellSizeScale = 1.0f;
 
-		float BubbleScale = 10.0f;
+		float BubbleScale = 4.0f;
 		float BubbleScaleChangeSpeed = 8.0f;
 		int SprayClassifyMaxNeighbours = 3;
 		int BubbleClassifyMinNeighbours = 8;

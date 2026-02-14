@@ -47,7 +47,7 @@ private:
         SM::Matrix InvView;
         SM::Matrix InvProj;
         float Scale = 0.01f;
-        float BaseAlpha = 0.1f;
+        float BaseAlpha = 0.10f;
     } m_DiffuseParams;
 
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";

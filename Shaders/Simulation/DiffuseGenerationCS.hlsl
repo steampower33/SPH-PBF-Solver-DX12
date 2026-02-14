@@ -139,7 +139,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
                 DiffuseParticle p;
                 p.PositionLife.xyz = spawnPos;
-                p.PositionLife.w = lerp(1.0, g_DP.MaxLifeTime, Random01(rngState));
+                p.PositionLife.w = lerp(0.5, g_DP.MaxLifeTime, Random01(rngState));
 
                 p.VelocityScale.xyz = vi + radialOffset;
                 p.VelocityScale.w = 0;

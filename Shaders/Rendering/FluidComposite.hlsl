@@ -112,7 +112,10 @@ float4 main(VSOutput input) : SV_Target
     float3 ddx = posRight - posCenter;
     float3 ddy = posUp - posCenter;
 
-    float3 N_view = normalize(cross(ddy, ddx));
+    float3 N_view = cross(ddy, ddx);
+    float normalStrength = 2.0;
+    N_view.xy *= normalStrength;
+    N_view = normalize(N_view);
     
     float3 N_world = mul(N_view, (float3x3) g_ViewInverse);
     N_world = normalize(N_world);
@@ -128,8 +131,8 @@ float4 main(VSOutput input) : SV_Target
     float3 H = normalize(L + V);
     float3 N = N_world;
     
-    float roughness = 0.1;
-    float F0 = 0.02;
+    float roughness = 0.15;
+    float F0 = 0.04;
     float NdotH = max(dot(N, H), 0.0);
     float NdotV = max(dot(N, V), 0.0);
     float NdotL = max(dot(N, L), 0.0);
@@ -145,8 +148,8 @@ float4 main(VSOutput input) : SV_Target
     float3 lightColor = float3(1.0, 1.0, 1.0);
 
     float thickness = g_Thickness.Sample(g_LinearClamp, input.UV).r;
-    
-    float3 absorptionCoef = float3(1.5, 0.5, 0.3);
+
+    float3 absorptionCoef = float3(4.0, 1.5, 0.8);
     float3 transmittance = exp(-absorptionCoef * thickness);
 
     float diffuseWrap = (dot(N, L) * 0.5 + 0.5);
@@ -155,7 +158,8 @@ float4 main(VSOutput input) : SV_Target
     
     float3 finalTransmittance = transmittance * lightIntensity;
 
-    float2 refractionUV = input.UV + N_view.xy * 0.02 * saturate(thickness);
+    float distortionStrength = 0.2;
+    float2 refractionUV = input.UV + N_view.xy * distortionStrength * saturate(thickness);
     float3 sceneColor = g_SceneTex.Sample(g_LinearClamp, refractionUV).rgb;
 
     float3 refractedColor = sceneColor * finalTransmittance;

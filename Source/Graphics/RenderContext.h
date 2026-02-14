@@ -38,7 +38,7 @@ struct RenderContext
         SM::Matrix View;
         SM::Matrix Proj;
         float VisualRadius = 0.05f;
-        float ThicknessCoeff = 0.10f;
+        float ThicknessCoeff = 0.05f;
     } Globals;
 
     SM::Matrix ViewProj;
