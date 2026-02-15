@@ -18,8 +18,8 @@ bool FluidSimApp::Run()
 		timer.Tick();
 
 		float dt = timer.GetDeltaTime();
-		timeAccumulator += dt;
-		if (timeAccumulator > 0.1f) timeAccumulator = 0.1f;
+		//timeAccumulator += dt;
+		//if (timeAccumulator > 0.1f) timeAccumulator = 0.1f;
 
 		MSG msg;
 		while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
@@ -51,18 +51,20 @@ bool FluidSimApp::Run()
 		// --- Rendering ---
 		ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.BeginFrame();
 
-		if (dt > 0.1f) dt = 0.1f;
-		timeAccumulator += dt;
+		//if (dt > 0.1f) dt = 0.1f;
+		//timeAccumulator += dt;
 
 		float simDt = m_Solver.m_FixedDt;
 
 		if (!m_Gui.m_IsPaused)
 		{
-			while (timeAccumulator >= simDt)
-			{
-				m_Solver.Run(cmdList);
-				timeAccumulator -= simDt;
-			}
+			m_Solver.Run(cmdList);
+
+			//while (timeAccumulator >= simDt)
+			//{
+			//	m_Solver.Run(cmdList);
+			//	timeAccumulator -= simDt;
+			//}
 		}
 
 		m_RendererManager.Render(cmdList);

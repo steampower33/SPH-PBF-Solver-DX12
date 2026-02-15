@@ -173,9 +173,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="Shaders\Rendering\RenderCommon.hlsli">
-      <Filter>Shaders\Rendering</Filter>
-    </None>
     <None Include="Shaders\Simulation\SolverCommon.hlsli">
       <Filter>Shaders\Simulation</Filter>
     </None>
@@ -184,6 +181,9 @@
     </None>
     <None Include="Shaders\Simulation\Hash.hlsli">
       <Filter>Shaders\Simulation</Filter>
+    </None>
+    <None Include="Shaders\Rendering\RenderDiffuseCommon.hlsli">
+      <Filter>Shaders\Rendering</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>
@@ -275,6 +275,9 @@
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\Simulation\BitonicSortLdsCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\ClearCounterCS.hlsl">
       <Filter>Shaders\Simulation</Filter>
     </FxCompile>
   </ItemGroup>

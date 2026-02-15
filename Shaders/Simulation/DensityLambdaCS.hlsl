@@ -58,7 +58,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         {
                             float r = sqrt(rSq);
                             
-                            float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+                            float3 gradW = (rVec / r) * SpikyKernelGrad(r, h);
                             
                             float3 gradC_j = -gradW * mass / restDensity;
                             
@@ -81,6 +81,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
         lambda = -C / (sumGradCiSq + g_SP.Epsilon);
     }
 
-    g_Density[id] = density;
-    g_Lambda[id] = lambda;
+    g_RW_Density[id] = density;
+    g_RW_Lambda[id] = lambda;
 }

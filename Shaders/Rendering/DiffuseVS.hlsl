@@ -1,74 +1,42 @@
-cbuffer DiffuseConstants : register(b0)
-{
-    float4x4 ViewProj;
-    float4x4 InvView;
-    float4x4 InvProj;
-    float Scale;
-    float BaseAlpha;
-};
-
-struct DiffuseParticle
-{
-    float4 PositionLife;
-    float4 VelocityScale;
-};
-StructuredBuffer<DiffuseParticle> g_Particles : register(t0);
-
-struct VSOutput
-{
-    float4 Pos : SV_POSITION;
-    float2 UV : TEXCOORD0;
-    float4 Color : COLOR;
-};
-
-// Quad Vertices (Triangle List Order)
-static const float2 kQuadVerts[6] =
-{
-    float2(-1, 1), float2(1, 1), float2(-1, -1),
-    float2(-1, -1), float2(1, 1), float2(1, -1)
-};
-
-float Remap01(float val, float minVal, float maxVal)
-{
-    return saturate((val - minVal) / (maxVal - minVal));
-}
-
-static const float NaN = 0.0f / 0.0f;
+#include "RenderDiffuseCommon.hlsli"
 
 VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
 {
     VSOutput output;
     
     DiffuseParticle p = g_Particles[instanceID];
-    
-    if (p.PositionLife.w <= 0.0f)
-    {
-        output.Pos = float4(NaN, NaN, NaN, NaN);
-        return output;
-    }
 
     float3 centerWorld = p.PositionLife.xyz;
     float life = p.PositionLife.w;
-    const float remainingLifetimeDissolveStart = 3.0;
+    float3 velocity = p.VelocityScale.xyz;
+    float speed = length(velocity);
     
-    float dissolveScaleT = saturate(life / remainingLifetimeDissolveStart);
-    float speed = length(p.VelocityScale.xyz);
-    float velScale = lerp(0.6, 1, Remap01(speed, 1, 3));
-    float vertScale = Scale * 2 * dissolveScaleT * p.VelocityScale.w * velScale;
-    //float vertScale = 0.01;
-    
-    float3 right = normalize(InvView[0].xyz);
-    float3 up = normalize(InvView[1].xyz);
+    float stretchFactor = saturate(speed * 0.2);
+    float scaleX = 1.0 / (1.0 + stretchFactor * 0.5);
+    float scaleY = 1.0 + stretchFactor;
 
-    float2 offset = kQuadVerts[vertexID];
-    float3 posWorld = centerWorld + (right * offset.x + up * offset.y) * vertScale;
+    float baseSize = Scale * p.VelocityScale.w;
+    
+    float fade = smoothstep(0.0, 0.2, life) * smoothstep(3.0, 2.5, life);
+    float finalSize = baseSize * fade;
+    
+    float3 camRight = normalize(InvView[0].xyz);
+    float3 camUp = normalize(InvView[1].xyz);
+    
+    float3 particleRight = camRight;
+    float3 particleUp = camUp;
 
-    output.Pos = mul(float4(posWorld, 1.0), ViewProj);
-    output.UV = offset * 0.5 + 0.5;
+    float2 offset = kQuadVerts[vertexID % 6];
     
-    float fadeAlpha = saturate(life / 0.5);
+    float3 vertexPos = centerWorld
+                     + (particleRight * offset.x * scaleX + particleUp * offset.y * scaleY) * finalSize;
+
+    output.Pos = mul(float4(vertexPos, 1.0), ViewProj);
+    output.UV = offset * 0.5 + 0.5; // -1~1 -> 0~1
     
-    output.Color = float4(0.9, 0.9, 0.9, BaseAlpha * fadeAlpha);
+    output.LinearDepth = output.Pos.w;
+
+    output.Color = float4(1.0, 1.0, 1.0, BaseAlpha * saturate(life));
 
     //float4 color = 1.0;
     //int w = int(p.VelocityScale.w);

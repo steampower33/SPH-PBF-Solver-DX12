@@ -53,12 +53,12 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     float3 rVec = pi - pj;
                     float rSq = dot(rVec, rVec);
 
-                    if (rSq < hSq && rSq > 1e-6f)
+                    if (rSq < hSq && rSq > 1e-6)
                     {
                         float r = sqrt(rSq);
                         float lj = g_Lambda[j];
                         
-                        float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+                        float3 gradW = (rVec / r) * SpikyKernelGrad(r, h);
 
                         float lambdaSum = (li + lj);
 
@@ -68,8 +68,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         // (W_curr / W_dq)
                         float ratio = wVal / valAtDq;
         
-                        // s_corr = -k * (ratio ^ n)
-                        float sCorr = -k * pow(max(ratio, 0.0001), n);
+                        // s_corr = -k * (ratio ^ n) : fix n = 4
+                        float ratio2 = ratio * ratio;
+                        float ratio4 = ratio2 * ratio2;
+                        float sCorr = -k * ratio4;
 
                         deltaPos += (lambdaSum + sCorr) * gradW;
                     }
@@ -78,5 +80,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
         }
     }
 
-    g_DeltaPos[id] = deltaPos / restDensity;
+    g_RW_DeltaPos[id] = deltaPos / restDensity;
 }

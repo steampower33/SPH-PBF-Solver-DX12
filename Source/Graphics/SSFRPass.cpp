@@ -17,6 +17,8 @@ void SSFRPass::Render(const RenderContext& ctx)
 		m_DiffuseParams.ViewProj = ctx.ViewProj;
 		m_DiffuseParams.InvView = ctx.InvView;
 		m_DiffuseParams.InvProj = ctx.InvProj;
+
+		m_DiffuseParams.InvScreenSize = ctx.InvScreenSize;
 	}
 
 	if (m_bDebugDrawParticles)
@@ -119,6 +121,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 	{
 		ImGui::DragFloat("DiffuseScale", &m_DiffuseParams.Scale, 0.001f, 0.0f, 1.0f, "%.3f");
 		ImGui::DragFloat("BaseAlpha", &m_DiffuseParams.BaseAlpha, 0.001f, 0.0f, 1.0f, "%.3f");
+		ImGui::DragFloat("Turbidity", &m_DiffuseParams.Turbidity, 0.1f, 0.0f, 20.0f, "%.1f");
 	}
 }
 
@@ -323,8 +326,8 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 
 	// Current Frame Index, Offset, CopyDestIndex
 	UINT frameIndex = ctx.FrameIndex;
-	UINT frameOffset = frameIndex * 5;
-	UINT destIndex = frameOffset + 3;
+	UINT baseOffset = 3 + (frameIndex * 4);
+	UINT destIndex = baseOffset;
 
 	UINT srvSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), destIndex, srvSize);
@@ -369,41 +372,77 @@ void SSFRPass::RenderDiffuse(const RenderContext& ctx)
 {
 	auto cmdList = ctx.CmdList;
 	auto solver = ctx.Solver;
+	auto device = ctx.Device;
 
-	//const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	//cmdList->ClearRenderTargetView(ctx.CurrentRTV, clearColor, 0, nullptr);
-	//cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	D3D12_RESOURCE_BARRIER transitionBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		solver->GetDiffuseParticleResource(),
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+	cmdList->ResourceBarrier(1, &transitionBarrier);
 
-	//cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
+	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
+	cmdList->SetDescriptorHeaps(1, heaps);
 
-	//cmdList->RSSetViewports(1, &ctx.Viewport);
-	//cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
+	UINT srvSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	UINT baseOffset = 3 + (ctx.FrameIndex * 4);
+	UINT diffuseOffset = baseOffset + 2;
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handleT0(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), diffuseOffset, srvSize);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handleT1(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), diffuseOffset + 1, srvSize);
+
+	struct DiffuseParticle
+	{
+		SM::Vector4 PositionLife;
+		SM::Vector4 VelocityScale;
+	};
+	// Create Diffuse Particle Buffer View
+	D3D12_SHADER_RESOURCE_VIEW_DESC particleSrvDesc = {};
+	particleSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+	particleSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+	particleSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	particleSrvDesc.Buffer.FirstElement = 0;
+	particleSrvDesc.Buffer.NumElements = solver->GetNumDiffuseParticles();
+	particleSrvDesc.Buffer.StructureByteStride = sizeof(DiffuseParticle); // 구조체 정의 필요
+	particleSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+	device->CreateShaderResourceView(solver->GetDiffuseParticleResource(), &particleSrvDesc, handleT0);
+
+	// Create Fluid Depth Texture
+	D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
+	depthSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
+	depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	depthSrvDesc.Texture2D.MipLevels = 1;
+
+	device->CreateShaderResourceView(m_FluidDepthTexture.Get(), &depthSrvDesc, handleT1);
 
 	cmdList->SetGraphicsRootSignature(m_DiffuseRootSig.Get());
 	cmdList->SetPipelineState(m_DiffusePSO.Get());
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(DiffuseParams) / 4, &m_DiffuseParams, 0);
 
-	ID3D12DescriptorHeap* heaps[] = { solver->GetGlobalHeap() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
-		solver->GetGlobalHeap()->GetGPUDescriptorHandleForHeapStart(),
-		solver->GetDiffuseSrvIndex(),
-		solver->GetDescriptorSize()
-	);
-	cmdList->SetGraphicsRootDescriptorTable(1, srvHandle);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart(), diffuseOffset, srvSize);
+	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandle);
 
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->ExecuteIndirect(
-
 		solver->GetDrawCommandSignature(),
 		1,
 		solver->GetDrawArgsBuffer(),
 		0,
 		nullptr, 0
 	);
+
+	D3D12_RESOURCE_BARRIER restoreBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		solver->GetDiffuseParticleResource(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+	);
+	cmdList->ResourceBarrier(1, &restoreBarrier);
 }
+
 // =========================================================
 // Initialization Functions
 // =========================================================
@@ -517,8 +556,10 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 		params[0].InitAsConstants(sizeof(DiffuseParams) / 4, 0); // b0
 
 		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0 (Particle Buffer)
-		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
+
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_ALL);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
 		desc.Init_1_1(2, params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -768,7 +809,7 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 		ThrowIfFailed(device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&m_FluidRtvHeap)));
 
 		D3D12_DESCRIPTOR_HEAP_DESC srvDesc = {};
-		srvDesc.NumDescriptors = 5 * GraphicsCore::FrameCount; // 0,1,2: Fluid / 3,4: Scene
+		srvDesc.NumDescriptors = 3 + (4 * GraphicsCore::FrameCount);
 		srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		ThrowIfFailed(device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_FluidSrvHeap)));

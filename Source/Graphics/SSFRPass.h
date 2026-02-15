@@ -23,7 +23,7 @@ private:
         float DirY;
         float BlurRadius = 8.0f;
         float SigmaSpatial = 4.0f;
-        float SigmaRange = 0.5f;
+        float SigmaRange = 1.0f;
         float pad;
     } m_BlurParams;
 
@@ -46,8 +46,12 @@ private:
         SM::Matrix ViewProj;
         SM::Matrix InvView;
         SM::Matrix InvProj;
+        
         float Scale = 0.01f;
         float BaseAlpha = 0.10f;
+        SM::Vector2 InvScreenSize;
+        
+        float Turbidity = 1.0f;
     } m_DiffuseParams;
 
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";

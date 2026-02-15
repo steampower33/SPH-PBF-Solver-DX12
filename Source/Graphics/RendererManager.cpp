@@ -13,6 +13,7 @@ void RendererManager::Update(const SM::Matrix& view, const SM::Matrix& proj, con
 	m_RenderContext.InvProj = proj.Invert().Transpose();
 	m_RenderContext.CamPos = camPos;
 	m_RenderContext.ViewProj = (view * proj).Transpose();
+	m_RenderContext.InvScreenSize = { 1.0f / m_RenderInitContext.Width, 1.0f / m_RenderInitContext.Height };
 
 	{
 		SM::Vector3 targetPos = m_RenderContext.TargetPos;

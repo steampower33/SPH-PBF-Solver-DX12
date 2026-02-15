@@ -26,9 +26,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= numParticles)
         return;
 
-    if (id == 0)
-        g_Counters[1] = 0;
-
     float3 pi = g_PosPred[id];
     float3 vi = g_VelOut[id];
     float dt = g_DP.DiffuseDeltaTime;
@@ -101,7 +98,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float I_k = GetPotential(energy, g_DP.EnergyMin, g_DP.EnergyMax);
 
     float n_d = (g_DP.kTa * I_ta + g_DP.kWc * I_wc) * I_k * dt;
-    n_d = min(n_d, 64.0);
+    n_d = g_DP.GeneratePerFrame * tanh(n_d / g_DP.GeneratePerFrame);
     
     uint rngState = WangHash(id + uint(dt * 12345.0) + asuint(pi.x));
     

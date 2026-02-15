@@ -19,7 +19,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex, uint3 GID :
     
     if (idx1 < numParticles)
     {
-        uint pID = g_SortedIndices[idx1];
+        uint pID = g_RW_SortedIndices[idx1];
         s_Indices[tID] = pID;
         s_Hashes[tID] = GetGridHash(g_PosPred[pID], g_SP.CellSize, g_SP.GridDim);
     }
@@ -31,7 +31,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex, uint3 GID :
 
     if (idx2 < numParticles)
     {
-        uint pID = g_SortedIndices[idx2];
+        uint pID = g_RW_SortedIndices[idx2];
         s_Indices[tID + BITONIC_BLOCK_SIZE] = pID;
         s_Hashes[tID + BITONIC_BLOCK_SIZE] = GetGridHash(g_PosPred[pID], g_SP.CellSize, g_SP.GridDim);
     }
@@ -77,7 +77,7 @@ void main(uint3 DTid : SV_DispatchThreadID, uint GI : SV_GroupIndex, uint3 GID :
     }
 
     if (idx1 < numParticles)
-        g_SortedIndices[idx1] = s_Indices[tID];
+        g_RW_SortedIndices[idx1] = s_Indices[tID];
     if (idx2 < numParticles)
-        g_SortedIndices[idx2] = s_Indices[tID + BITONIC_BLOCK_SIZE];
+        g_RW_SortedIndices[idx2] = s_Indices[tID + BITONIC_BLOCK_SIZE];
 }

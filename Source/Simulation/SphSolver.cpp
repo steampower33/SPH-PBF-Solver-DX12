@@ -30,293 +30,201 @@ void SphSolver::UpdateInputs()
 
 void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
+	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_UAV_DIFFUSE]);
+
 	if (m_bSingleDamBreak || m_bDoubleDamBreak || m_bCornerDamBreak)
 	{
 		ResetSimulation(cmdList);
 	}
 
-	UpdateInputs();
+	m_Groups = (m_NumParticles + 255) / 256;
 
-	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
+	UpdateInputs();
 
 	ID3D12DescriptorHeap* heaps[] = { m_GlobalHeap.Get() };
 	cmdList->SetDescriptorHeaps(1, heaps);
 
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRootDescriptorTable(2, m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE uavBaseHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE srvBaseHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart(), m_CbvSrvUavDescriptorSize, SRV_IDX_POS_PRED);
 
-	UINT groups = (m_NumParticles + 255) / 256;
-
-	auto posPredBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get());
+	cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
+	cmdList->SetComputeRoot32BitConstants(RP_CB_SIM_PARAMS, sizeof(SimParams) / 4, &m_SimParams, 0);
+	cmdList->SetComputeRootDescriptorTable(RP_DT_UAV, uavBaseHandle);
+	cmdList->SetComputeRootDescriptorTable(RP_DT_SRV, srvBaseHandle);
 
 	m_SimParams.DeltaTime = m_FixedDt / m_Substeps;
 
 	for (int s = 0; s < m_Substeps; ++s)
 	{
-
 		// [1] Integration Pass
 		{
 			GPU_PROFILE_BEGIN(cmdList, "Integration");
-
 			cmdList->SetPipelineState(m_IntegrationPSO.Get());
-
-			cmdList->Dispatch(groups, 1, 1);
-
-			cmdList->ResourceBarrier(1, &posPredBarrier);
-
+			cmdList->Dispatch(m_Groups, 1, 1);
+			cmdList->ResourceBarrier(1, &m_AllBarriers[UAV_BARRIER_POS_PRED]);
 			GPU_PROFILE_END(cmdList);
 		}
 
-		// [2] Sort Pass
-		{
-			RunBitonicSort(cmdList);
-		}
+		// [2] Sort
+		RunBitonicSort(cmdList);
 
-		// [3] Permute Pass (Data Reordering)
-		{
-			GPU_PROFILE_BEGIN(cmdList, "Permute");
-
-			auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-			cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
-
-			cmdList->SetComputeRootSignature(m_PermuteRootSig.Get());
-			cmdList->SetPipelineState(m_PermuteDataPSO.Get());
-
-			cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-
-			// UAV Table (Param 1) -> u0~u2 (Temp Buffers)
-			CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
-			uavHandle.Offset(UAV_IDX_TEMP_POS, m_CbvSrvUavDescriptorSize);
-			cmdList->SetComputeRootDescriptorTable(1, uavHandle);
-
-			// SRV Table (Param 2) -> t0~t3 (Source)
-			CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
-			srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
-			cmdList->SetComputeRootDescriptorTable(2, srvHandle);
-
-			cmdList->Dispatch(groups, 1, 1);
-
-			auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
-
-			GPU_PROFILE_END(cmdList);
-		}
-
-		// [4] Copy Back
-		{
-			GPU_PROFILE_BEGIN(cmdList, "CopyBack");
-
-			CD3DX12_RESOURCE_BARRIER barriers[] = {
-				// Temp (UAV -> Source)
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
-				// Main (UAV -> Dest)
-				CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
-			};
-			cmdList->ResourceBarrier(6, barriers);
-
-			cmdList->CopyResource(m_PosPred.Get(), m_TempPosPred.Get());
-			cmdList->CopyResource(m_PosOld.Get(), m_TempPosOld.Get());
-			cmdList->CopyResource(m_VelIn.Get(), m_TempVel.Get());
-
-			CD3DX12_RESOURCE_BARRIER restoreBarriers[] = {
-				// Main: Dest -> UAV
-				CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),  D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),   D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-
-				// Temp: Source -> UAV
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-				CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
-			};
-			cmdList->ResourceBarrier(6, restoreBarriers);
-
-			GPU_PROFILE_END(cmdList);
-		}
+		// [3] Permute And CopyBack
+		PermuteAndCopyBack(cmdList);
 
 		cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
+		cmdList->SetComputeRoot32BitConstants(RP_CB_SIM_PARAMS, sizeof(SimParams) / 4, &m_SimParams, 0);
+		cmdList->SetComputeRootDescriptorTable(RP_DT_UAV, uavBaseHandle);
+		cmdList->SetComputeRootDescriptorTable(RP_DT_SRV, srvBaseHandle);
 
-		cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-		cmdList->SetComputeRootDescriptorTable(2, m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+		// [5] Build Grid
+		BuildGrid(cmdList);
 
-		// [5] Grid Pass
+		// [5] Solver Iteration
+		cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_SRV_GRID_INDICES]);
+
+		for (int iter = 0; iter < m_Iterations; ++iter)
 		{
-			GPU_PROFILE_BEGIN(cmdList, "Set Grid");
+			cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_SRV_POS_PRED]);
 
-			cmdList->SetPipelineState(m_ClearGridPSO.Get());
+			// Density & Lambda
+			GPU_PROFILE_BEGIN(cmdList, "DensityLambda");
+			cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
+			cmdList->Dispatch(m_Groups, 1, 1);
+			GPU_PROFILE_END(cmdList);
 
-			UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
-			cmdList->Dispatch(gridGroups, 1, 1);
+			cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_SRV_LAMBDA]);
 
-			auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndices.Get());
-			cmdList->ResourceBarrier(1, &gridBarrier);
+			// Delta Pos
+			GPU_PROFILE_BEGIN(cmdList, "Delta Pos");
+			cmdList->SetPipelineState(m_DeltaPosPSO.Get());
+			cmdList->Dispatch(m_Groups, 1, 1);
+			GPU_PROFILE_END(cmdList);
 
-			cmdList->SetPipelineState(m_BuildGridPSO.Get());
-			cmdList->Dispatch(groups, 1, 1);
+			D3D12_RESOURCE_BARRIER barriers2[] = {
+				m_AllBarriers[UAV_BARRIER_DELTAPOS],  // Waiting for DeltaPos write completion
+				m_AllBarriers[TRANS_UAV_LAMBDA],      // Lambda: SRV -> UAV
+				m_AllBarriers[TRANS_UAV_POS_PRED]     // PosPred: SRV -> UAV
+			};
+			cmdList->ResourceBarrier(_countof(barriers2), barriers2);
 
-			cmdList->ResourceBarrier(1, &gridBarrier);
-
+			// Constraint Apply
+			GPU_PROFILE_BEGIN(cmdList, "Constraint Apply");
+			cmdList->SetPipelineState(m_ConstraintPSO.Get());
+			cmdList->Dispatch(m_Groups, 1, 1);
 			GPU_PROFILE_END(cmdList);
 		}
 
-		// [5] Solver Iteration
-		{
-
-			CD3DX12_RESOURCE_BARRIER DensityLambda[] = {
-				CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get()),
-				CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get())
-			};
-
-			CD3DX12_RESOURCE_BARRIER PredDelta[] = {
-				CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get()),
-				CD3DX12_RESOURCE_BARRIER::UAV(m_DeltaPos.Get())
-			};
-
-			for (int iter = 0; iter < m_Iterations; ++iter)
-			{
-				// Density & Lambda
-				GPU_PROFILE_BEGIN(cmdList, "DensityLambda");
-				cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
-				cmdList->Dispatch(groups, 1, 1);
-				cmdList->ResourceBarrier(2, DensityLambda);
-				GPU_PROFILE_END(cmdList);
-
-
-				// Delta Pos
-				GPU_PROFILE_BEGIN(cmdList, "Delta Pos");
-				cmdList->SetPipelineState(m_DeltaPosPSO.Get());
-				cmdList->Dispatch(groups, 1, 1);
-				cmdList->ResourceBarrier(2, PredDelta);
-				GPU_PROFILE_END(cmdList);
-
-
-				// Constraint Apply
-				GPU_PROFILE_BEGIN(cmdList, "Constraint Apply");
-				cmdList->SetPipelineState(m_ConstraintPSO.Get());
-				cmdList->Dispatch(groups, 1, 1);
-				cmdList->ResourceBarrier(1, &posPredBarrier);
-				GPU_PROFILE_END(cmdList);
-			}
-
-		}
+		D3D12_RESOURCE_BARRIER endLoopBarriers[] = {
+			m_AllBarriers[TRANS_SRV_POS_PRED],
+			m_AllBarriers[TRANS_SRV_VEL_IN]
+		};
+		cmdList->ResourceBarrier(_countof(endLoopBarriers), endLoopBarriers);
 
 		GPU_PROFILE_BEGIN(cmdList, "Vorticity");
 		cmdList->SetPipelineState(m_VorticityPSO.Get());
-		cmdList->Dispatch(groups, 1, 1);
-		auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
-		cmdList->ResourceBarrier(1, &vorticityBarrier);
+		cmdList->Dispatch(m_Groups, 1, 1);
 		GPU_PROFILE_END(cmdList);
+
+		D3D12_RESOURCE_BARRIER vortBarriers[] = {
+			m_AllBarriers[UAV_BARRIER_VORTICITY], // UAV Barrier (Safety)
+			m_AllBarriers[TRANS_SRV_VORTICITY]    // UAV -> SRV
+		};
+		cmdList->ResourceBarrier(_countof(vortBarriers), vortBarriers);
 
 		GPU_PROFILE_BEGIN(cmdList, "Update Velocity");
 		cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
-		cmdList->Dispatch(groups, 1, 1);
-		auto velOutBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
-		cmdList->ResourceBarrier(1, &velOutBarrier);
+		cmdList->Dispatch(m_Groups, 1, 1);
 		GPU_PROFILE_END(cmdList);
+
+		D3D12_RESOURCE_BARRIER restoreBarriers[] = {
+			m_AllBarriers[TRANS_UAV_GRID_INDICES],
+			m_AllBarriers[TRANS_UAV_POS_PRED],
+			m_AllBarriers[TRANS_UAV_VEL_IN],
+			m_AllBarriers[TRANS_UAV_VORTICITY]
+		};
+		cmdList->ResourceBarrier(_countof(restoreBarriers), restoreBarriers);
 	}
 
 	// Diffuse Particle
 	if (!m_bSolveDiffuseParticles) return;
 
-	// [Barrier] DrawArgsBuffer: UAV -> Indirect (렌더러가 쓸 수 있게)
-	// (주의: 렌더링 전에 ResourceStateTransition을 해줘야 함. 
-	// 보통 여기서 INDIRECT_ARGUMENT로 바꿔놓고, 다음 프레임 시작 때 UAV로 바꿈)
-	auto barrierDrawArgsToUav = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_DrawArgsBuffer.Get(),
-		D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	cmdList->ResourceBarrier(1, &barrierDrawArgsToUav);
+	D3D12_RESOURCE_BARRIER startDiffuseBarriers[] = {
+		m_AllBarriers[TRANS_SRV_GRID_INDICES],
+		m_AllBarriers[TRANS_SRV_POS_PRED],
+		m_AllBarriers[TRANS_SRV_VEL_OUT],
+	};
+	cmdList->ResourceBarrier(_countof(startDiffuseBarriers), startDiffuseBarriers);
 
 	cmdList->SetComputeRootSignature(m_DiffuseRoogSig.Get());
 
-	cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
-	cmdList->SetComputeRoot32BitConstants(1, sizeof(DiffuseParams) / 4, &m_DiffuseParams, 0);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE diffuseUavHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+	diffuseUavHandle.Offset(UAV_IDX_DIFFUSE_PARTICLES, m_CbvSrvUavDescriptorSize);
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
-	srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
+	cmdList->SetComputeRoot32BitConstants(RP_CB_SIM_PARAMS, sizeof(SimParams) / 4, &m_SimParams, 0);
+	cmdList->SetComputeRoot32BitConstants(RP_CB_SORT_OR_DIFFUSE_PARAMS, sizeof(DiffuseParams) / 4, &m_DiffuseParams, 0);
+	cmdList->SetComputeRootDescriptorTable(RP_DT_SRV, srvBaseHandle);     // t0~t9
+	cmdList->SetComputeRootDescriptorTable(RP_DT_UAV_DIFFUSE, diffuseUavHandle); // u3~u7
 
-	cmdList->SetComputeRootDescriptorTable(3, srvHandle);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
-	uavHandle.Offset(UAV_IDX_DIFFUSE_PARTICLES, m_CbvSrvUavDescriptorSize);
-	cmdList->SetComputeRootDescriptorTable(4, uavHandle);
+	// Clear Counter
+	cmdList->SetPipelineState(m_ClearCounterPSO.Get());
+	cmdList->Dispatch(1, 1, 1);
+	cmdList->ResourceBarrier(1, &m_AllBarriers[UAV_BARRIER_COUNTERS]);
 
 	// Diffuse Generation
+	GPU_PROFILE_BEGIN(cmdList, "DiffuseGeneration");
 	cmdList->SetPipelineState(m_DiffuseGenerationPSO.Get());
-	cmdList->Dispatch(groups, 1, 1);
+	cmdList->Dispatch(m_Groups, 1, 1);
+	GPU_PROFILE_END(cmdList);
 
 	// Build Dispatch Args
 	UINT argTypeUpdate = 0;
 	cmdList->SetComputeRoot32BitConstants(2, 1, &argTypeUpdate, 0);
-
 	cmdList->SetPipelineState(m_BuildDispatchArgsPSO.Get());
 	cmdList->Dispatch(1, 1, 1);
 
-	auto barrierArgsToIndirect = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_DispatchArgsBuffer.Get(),
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-		D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	cmdList->ResourceBarrier(1, &barrierArgsToIndirect);
+	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_INDIRECT_DISPATCH_ARGS]);
 
-	// Update
+	// Update Diffuse
+	GPU_PROFILE_BEGIN(cmdList, "UpdateDiffuse");
 	cmdList->SetPipelineState(m_UpdateDiffusePSO.Get());
+	cmdList->ExecuteIndirect(m_DispatchSig.Get(), 1, m_DispatchArgsBuffer.Get(), 0, nullptr, 0);
+	GPU_PROFILE_END(cmdList);
 
-	cmdList->ExecuteIndirect(
-		m_DispatchSig.Get(),
-		1,
-		m_DispatchArgsBuffer.Get(),
-		0,
-		nullptr, 0
-	);
+	D3D12_RESOURCE_BARRIER endDiffuseBarriers[] = {
+		m_AllBarriers[TRANS_UAV_GRID_INDICES],
+		m_AllBarriers[TRANS_UAV_POS_PRED],
+		m_AllBarriers[TRANS_UAV_VEL_OUT],
+		m_AllBarriers[TRANS_UAV_DISPATCH_ARGS],
+		m_AllBarriers[UAV_BARRIER_DIFFUSE_COMPACT]
+	};
+	cmdList->ResourceBarrier(_countof(endDiffuseBarriers), endDiffuseBarriers);
 
-	auto barrierArgsToUAV = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_DispatchArgsBuffer.Get(),
-		D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT,
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-	auto barrierCompact = CD3DX12_RESOURCE_BARRIER::UAV(m_DiffuseParticlesCompacted.Get());
-	cmdList->ResourceBarrier(1, &barrierArgsToUAV);
-	cmdList->ResourceBarrier(1, &barrierCompact);
-
-	// 4. Build Args for Copy (복사할 개수 계산)
-	cmdList->SetPipelineState(m_BuildDispatchArgsPSO.Get());
-	// RootConstant: Type 1 (Copy용, Counters[1] 참조)
+	// Build Dispatch Args For Copy
 	UINT argTypeCopy = 1;
+	cmdList->SetPipelineState(m_BuildDispatchArgsPSO.Get());
 	cmdList->SetComputeRoot32BitConstants(2, 1, &argTypeCopy, 0);
 	cmdList->Dispatch(1, 1, 1);
 
-	// [Barrier] ArgsBuffer: UAV -> Indirect
-	cmdList->ResourceBarrier(1, &barrierArgsToIndirect);
+	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_INDIRECT_DISPATCH_ARGS]);
 
 	cmdList->SetPipelineState(m_CopyDiffusePSO.Get());
+	cmdList->ExecuteIndirect(m_DispatchSig.Get(), 1, m_DispatchArgsBuffer.Get(), 0, nullptr, 0);
 
-	cmdList->ExecuteIndirect(
-		m_DispatchSig.Get(),
-		1,
-		m_DispatchArgsBuffer.Get(),
-		0,
-		nullptr, 0
-	);
+	D3D12_RESOURCE_BARRIER preDrawArgsBarriers[] = {
+		m_AllBarriers[TRANS_UAV_DISPATCH_ARGS],
+		m_AllBarriers[UAV_BARRIER_DIFFUSE],
+		m_AllBarriers[TRANS_UAV_DRAW_ARGS]
+	};
+	cmdList->ResourceBarrier(_countof(preDrawArgsBarriers), preDrawArgsBarriers);
 
-	cmdList->ResourceBarrier(1, &barrierArgsToUAV);
-	auto barrierDiffuseMain = CD3DX12_RESOURCE_BARRIER::UAV(m_DiffuseParticles.Get());
-	cmdList->ResourceBarrier(1, &barrierDiffuseMain);
-
-	// 6. Build Draw Args (렌더링용 인자 생성 - 마지막)
 	cmdList->SetPipelineState(m_BuildDrawArgsPSO.Get());
 	cmdList->Dispatch(1, 1, 1);
 
-	// [Barrier] DrawArgsBuffer: UAV -> Indirect (렌더러가 쓸 수 있게)
-	// (주의: 렌더링 전에 ResourceStateTransition을 해줘야 함. 
-	// 보통 여기서 INDIRECT_ARGUMENT로 바꿔놓고, 다음 프레임 시작 때 UAV로 바꿈)
-	auto barrierDrawArgsToIndirect = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_DrawArgsBuffer.Get(),
-		D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-		D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-	cmdList->ResourceBarrier(1, &barrierDrawArgsToIndirect);
+	D3D12_RESOURCE_BARRIER finalBarriers[] = {
+		m_AllBarriers[TRANS_INDIRECT_DRAW_ARGS],
+		m_AllBarriers[TRANS_SRV_DIFFUSE]
+	};
+	cmdList->ResourceBarrier(_countof(finalBarriers), finalBarriers);
 }
 
 void SphSolver::OnGui()
@@ -383,21 +291,23 @@ void SphSolver::OnGui()
 
 		// About Generate Diffuse Particles
 		ImGui::SeparatorText("Generate Diffuse Particles");
-		ImGui::DragFloat("TrappedAirMin", &m_DiffuseParams.TrappedAirMin, 0.1f, 0.0f, 30.0f, "%.1f");
-		ImGui::DragFloat("TrappedAirMax", &m_DiffuseParams.TrappedAirMax, 0.1f, 0.0f, 30.0f, "%.1f");
+		ImGui::DragFloat("TrappedAirMin", &m_DiffuseParams.TrappedAirMin, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("TrappedAirMax", &m_DiffuseParams.TrappedAirMax, 0.1f, 0.0f, 100.0f, "%.1f");
 		ImGui::DragFloat("K_Ta", &m_DiffuseParams.K_Ta, 0.1f, 0.0f, 100.0f, "%.1f");
-		ImGui::DragFloat("WaveCrestMin", &m_DiffuseParams.WaveCrestMin, 0.1f, 0.0f, 30.0f, "%.1f");
-		ImGui::DragFloat("WaveCrestMax", &m_DiffuseParams.WaveCrestMax, 0.1f, 0.0f, 30.0f, "%.1f");
+		ImGui::DragFloat("WaveCrestMin", &m_DiffuseParams.WaveCrestMin, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("WaveCrestMax", &m_DiffuseParams.WaveCrestMax, 0.1f, 0.0f, 100.0f, "%.1f");
 		ImGui::DragFloat("K_Wc", &m_DiffuseParams.K_Wc, 0.1f, 0.0f, 100.0f, "%.1f");
-		ImGui::DragFloat("EnergyMin", &m_DiffuseParams.EnergyMin, 0.1f, 0.0f, 10.0f, "%.1f");
-		ImGui::DragFloat("EnergyMax", &m_DiffuseParams.EnergyMax, 0.1f, 0.0f, 10.0f, "%.1f");
-		ImGui::DragFloat("MaxLifeTime", &m_DiffuseParams.MaxLifeTime, 0.1f, 0.0f, 10.0f, "%.1f");
-		ImGui::DragFloat("CellSizeScale", &m_DiffuseParams.CellSizeScale, 0.1f, 0.0f, 10.0f, "%.1f");
-		ImGui::DragFloat("BubbleScale", &m_DiffuseParams.BubbleScale, 0.1f, 0.0f, 10.0f, "%.1f");
-		ImGui::DragFloat("BubbleScaleChangeSpeed", &m_DiffuseParams.BubbleScaleChangeSpeed, 0.1f, 0.0f, 10.0f, "%.1f");
+		ImGui::DragFloat("EnergyMin", &m_DiffuseParams.EnergyMin, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("EnergyMax", &m_DiffuseParams.EnergyMax, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("MaxLifeTime", &m_DiffuseParams.MaxLifeTime, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("CellSizeScale", &m_DiffuseParams.CellSizeScale, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("BubbleScale", &m_DiffuseParams.BubbleScale, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("BubbleScaleChangeSpeed", &m_DiffuseParams.BubbleScaleChangeSpeed, 0.1f, 0.0f, 100.0f, "%.1f");
 		ImGui::DragInt("SprayClassifyMaxNeighbours", &m_DiffuseParams.SprayClassifyMaxNeighbours, 1, 0, 100);
 		ImGui::DragInt("BubbleClassifyMinNeighbours", &m_DiffuseParams.BubbleClassifyMinNeighbours, 1, 0, 100);
-		ImGui::DragFloat("BubbleBuoyancy", &m_DiffuseParams.BubbleBuoyancy, 0.1f, 0.0f, 10.0f, "%.1f");
+		ImGui::DragFloat("BubbleBuoyancy", &m_DiffuseParams.BubbleBuoyancy, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragFloat("FluidAccelMul", &m_DiffuseParams.FluidAccelMul, 0.1f, 0.0f, 100.0f, "%.1f");
+		ImGui::DragInt("GeneratePerFrame", &m_DiffuseParams.GeneratePerFrame, 1, 0, 100);
 	}
 }
 
@@ -406,6 +316,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	m_pDevice = device;
 
 	CreateBuffers(device, cmdList, uploadHeaps);
+	InitBarriers();
 	CreateAllViews(device);
 	CreateGlobalRootSignature(device);
 	CreatePermuteRootSignature(device);
@@ -425,6 +336,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreateComputePSO(device, shaderHelper, L"VorticityCS.hlsl", m_VorticityPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"UpdateVelocityCS.hlsl", m_UpdateVelocityPSO, m_GlobalRootSig);
 
+	CreateComputePSO(device, shaderHelper, L"ClearCounterCS.hlsl", m_ClearCounterPSO, m_DiffuseRoogSig);
 	CreateComputePSO(device, shaderHelper, L"DiffuseGenerationCS.hlsl", m_DiffuseGenerationPSO, m_DiffuseRoogSig);
 	CreateComputePSO(device, shaderHelper, L"BuildDispatchArgsCS.hlsl", m_BuildDispatchArgsPSO, m_DiffuseRoogSig);
 	CreateComputePSO(device, shaderHelper, L"UpdateDiffuseCS.hlsl", m_UpdateDiffusePSO, m_DiffuseRoogSig);
@@ -432,12 +344,74 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreateComputePSO(device, shaderHelper, L"BuildDrawArgsCS.hlsl", m_BuildDrawArgsPSO, m_DiffuseRoogSig);
 }
 
+void SphSolver::InitBarriers()
+{
+	// Position Predicted
+	m_AllBarriers[UAV_BARRIER_POS_PRED] = CD3DX12_RESOURCE_BARRIER::UAV(m_PosPred.Get());
+	m_AllBarriers[TRANS_SRV_POS_PRED] = CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_POS_PRED] = CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Position Old
+	m_AllBarriers[TRANS_SRV_POS_OLD] = CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_POS_OLD] = CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Velocity In
+	m_AllBarriers[TRANS_SRV_VEL_IN] = CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_VEL_IN] = CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Velocity Out
+	m_AllBarriers[TRANS_SRV_VEL_OUT] = CD3DX12_RESOURCE_BARRIER::Transition(m_VelOut.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_VEL_OUT] = CD3DX12_RESOURCE_BARRIER::Transition(m_VelOut.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Grid Indices
+	m_AllBarriers[TRANS_SRV_GRID_INDICES] = CD3DX12_RESOURCE_BARRIER::Transition(m_GridIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_GRID_INDICES] = CD3DX12_RESOURCE_BARRIER::Transition(m_GridIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Lambda
+	m_AllBarriers[UAV_BARRIER_LAMBDA] = CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get());
+	m_AllBarriers[TRANS_SRV_LAMBDA] = CD3DX12_RESOURCE_BARRIER::Transition(m_Lambda.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_LAMBDA] = CD3DX12_RESOURCE_BARRIER::Transition(m_Lambda.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Density & DeltaPos & VelOut (UAV Barrier Only)
+	m_AllBarriers[UAV_BARRIER_DENSITY] = CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get());
+	m_AllBarriers[UAV_BARRIER_DELTAPOS] = CD3DX12_RESOURCE_BARRIER::UAV(m_DeltaPos.Get());
+	m_AllBarriers[UAV_BARRIER_VEL_OUT] = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
+
+	// Vorticity
+	m_AllBarriers[UAV_BARRIER_VORTICITY] = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
+	m_AllBarriers[TRANS_SRV_VORTICITY] = CD3DX12_RESOURCE_BARRIER::Transition(m_Vorticity.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[TRANS_UAV_VORTICITY] = CD3DX12_RESOURCE_BARRIER::Transition(m_Vorticity.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+
+	// Diffuse Particles Main
+	m_AllBarriers[TRANS_UAV_DIFFUSE] = CD3DX12_RESOURCE_BARRIER::Transition(m_DiffuseParticles.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	m_AllBarriers[TRANS_SRV_DIFFUSE] = CD3DX12_RESOURCE_BARRIER::Transition(m_DiffuseParticles.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	m_AllBarriers[UAV_BARRIER_DIFFUSE] = CD3DX12_RESOURCE_BARRIER::UAV(m_DiffuseParticles.Get());
+
+	// Diffuse Compacted
+	m_AllBarriers[UAV_BARRIER_DIFFUSE_COMPACT] = CD3DX12_RESOURCE_BARRIER::UAV(m_DiffuseParticlesCompacted.Get());
+
+	// Counters
+	m_AllBarriers[UAV_BARRIER_COUNTERS] = CD3DX12_RESOURCE_BARRIER::UAV(m_Counters.Get());
+
+	// Indirect Arguments Buffers
+	m_AllBarriers[TRANS_UAV_DISPATCH_ARGS] = CD3DX12_RESOURCE_BARRIER::Transition(m_DispatchArgsBuffer.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	m_AllBarriers[TRANS_INDIRECT_DISPATCH_ARGS] = CD3DX12_RESOURCE_BARRIER::Transition(m_DispatchArgsBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+
+	m_AllBarriers[TRANS_UAV_DRAW_ARGS] = CD3DX12_RESOURCE_BARRIER::Transition(m_DrawArgsBuffer.Get(), D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	m_AllBarriers[TRANS_INDIRECT_DRAW_ARGS] = CD3DX12_RESOURCE_BARRIER::Transition(m_DrawArgsBuffer.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+}
+
 void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
-	ResetParticlePos();
+	m_InitPos.resize(m_NumParticles);
+	m_Zero1.resize(m_NumParticles, 0.0f);
+	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
+	m_DiffuseParticlesData.resize(m_DiffuseParams.MaxDiffuseParticles, DiffuseParticle(SM::Vector4(0.0f), SM::Vector4(0.0f)));
 
 	m_SimParams.NumParticles = m_NumParticles;
 	m_OriginMinX = m_SimParams.BoxX.x;
+
+	ResetParticlePos();
 
 	UINT64 sizeVec3 = m_NumParticles * sizeof(SM::Vector3);
 	UINT64 sizeFloat = m_NumParticles * sizeof(float);
@@ -484,7 +458,7 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 	// [0] = ActiveCount
 	// [1] = SurvivorCount
-	CreateAndTrackBuffer(m_ZeroValues, sizeof(UINT) * 2, m_Counters, "m_Counters");
+	CreateAndTrackBuffer(m_CounterValues.data(), sizeof(UINT) * 2, m_Counters, "m_Counters");
 
 	CreateAndTrackBuffer(nullptr, sizeof(DispatchIndirectCommand), m_DispatchArgsBuffer, "m_DispatchArgsBuffer");
 	CreateAndTrackBuffer(nullptr, sizeof(DrawIndirectCommand), m_DrawArgsBuffer, "m_DrawArgsBuffer");
@@ -492,26 +466,15 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 void SphSolver::ResetParticlePos()
 {
-	int m_X = 64;
-	int m_Y = 64;
-	int m_Z = 64;
-
-	m_NumParticles = m_X * m_Y * m_Z;
-
-	m_SimParams.BoxY = { 0.0f, 20.0f };
-
-	m_Zero1.resize(m_NumParticles, 0.0f);
-	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-	m_InitPos.resize(m_NumParticles);
+	m_SimParams.BoxY = { 0.0f, 50.0f };
 
 	float offset = 0.2f;
 
+	float halfWidthX = 8.0f;
+	float halfWidthZ = 8.0f;
+
 	auto CornerDamBreak = [&]()
 		{
-			float halfWidthX = 7.0f;
-			float halfWidthZ = 4.0f;
-
 			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
 			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
@@ -536,9 +499,6 @@ void SphSolver::ResetParticlePos()
 
 	auto SingleDamBreak = [&]()
 		{
-			float halfWidthX = 7.0f;
-			float halfWidthZ = 4.0f;
-
 			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
 			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
@@ -561,9 +521,6 @@ void SphSolver::ResetParticlePos()
 
 	auto DoubleDamBreak = [&]()
 		{
-			float halfWidthX = 5.0f;
-			float halfWidthZ = 5.0f;
-
 			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
 			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
@@ -704,9 +661,11 @@ void SphSolver::CreateAllViews(ID3D12Device* device)
 	CreateBufferSRV(m_SortedIndices.Get(), m_NumParticles, sizeof(UINT), SRV_IDX_INDICES);		  // t3
 	CreateBufferSRV(m_VelOut.Get(), m_NumParticles, sizeof(SM::Vector3), SRV_IDX_VEL_OUT);        // t4
 	CreateBufferSRV(m_GridIndices.Get(), numGridCells, sizeof(UINT) * 2, SRV_IDX_GRID_INDICES);   // t5
+	CreateBufferSRV(m_Lambda.Get(), m_NumParticles, sizeof(float), SRV_IDX_LAMBDA);				  // t6
+	CreateBufferSRV(m_Vorticity.Get(), m_NumParticles, sizeVec3, SRV_IDX_VORTICITY);				  // t7
 
-	CreateBufferSRV(m_Density.Get(), m_NumParticles, sizeof(float), SRV_IDX_DENSITY_RENDER);	// t6
-	CreateBufferSRV(m_DiffuseParticles.Get(), m_DiffuseParams.MaxDiffuseParticles, sizeof(DiffuseParticle), SRV_IDX_DIFFUSE_PARTICLES_RENDER);	// t7
+	CreateBufferSRV(m_Density.Get(), m_NumParticles, sizeof(float), SRV_IDX_DENSITY_RENDER);	// t8
+	CreateBufferSRV(m_DiffuseParticles.Get(), m_DiffuseParams.MaxDiffuseParticles, sizeof(DiffuseParticle), SRV_IDX_DIFFUSE_PARTICLES_RENDER);	// t9
 }
 
 void SphSolver::CreateGlobalRootSignature(ID3D12Device* device)
@@ -721,7 +680,7 @@ void SphSolver::CreateGlobalRootSignature(ID3D12Device* device)
 	rootParameters[2].InitAsDescriptorTable(1, &uavRange);
 
 	CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE); // t0 ~ t3
+	srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 8, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
 	rootParameters[3].InitAsDescriptorTable(1, &srvRange);
 
 	static_assert((sizeof(SimParams) / 4 + sizeof(SortConstants) / 4 + 14) < 64, "Exceeds 64 DWORDs");
@@ -837,11 +796,13 @@ void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 {
 	GPU_PROFILE_BEGIN(cmdList, "BitonicSort");
 
+	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_SRV_POS_PRED]);
+
 	UINT sortBlockSize = 2048;
 
 	cmdList->SetPipelineState(m_BitonicSortLdsPSO.Get());
 	cmdList->Dispatch((m_NumParticles + sortBlockSize - 1) / sortBlockSize, 1, 1);
-	
+
 	auto ldsBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_SortedIndices.Get());
 	cmdList->ResourceBarrier(1, &ldsBarrier);
 
@@ -860,6 +821,97 @@ void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 		}
 	}
 
+	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_UAV_POS_PRED]);
+
+	GPU_PROFILE_END(cmdList);
+}
+
+void SphSolver::PermuteAndCopyBack(ID3D12GraphicsCommandList* cmdList)
+{
+	// Permute Pass (Data Reordering)
+	{
+		GPU_PROFILE_BEGIN(cmdList, "PermuteAndCopyBack");
+
+		auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
+
+		cmdList->SetComputeRootSignature(m_PermuteRootSig.Get());
+		cmdList->SetPipelineState(m_PermuteDataPSO.Get());
+
+		cmdList->SetComputeRoot32BitConstants(0, sizeof(SimParams) / 4, &m_SimParams, 0);
+
+		// UAV Table (Param 1) -> u0~u2 (Temp Buffers)
+		CD3DX12_GPU_DESCRIPTOR_HANDLE uavHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+		uavHandle.Offset(UAV_IDX_TEMP_POS, m_CbvSrvUavDescriptorSize);
+		cmdList->SetComputeRootDescriptorTable(1, uavHandle);
+
+		// SRV Table (Param 2) -> t0~t3 (Source)
+		CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(m_GlobalHeap->GetGPUDescriptorHandleForHeapStart());
+		srvHandle.Offset(SRV_IDX_POS_PRED, m_CbvSrvUavDescriptorSize);
+		cmdList->SetComputeRootDescriptorTable(2, srvHandle);
+
+		cmdList->Dispatch(m_Groups, 1, 1);
+
+		auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
+
+		GPU_PROFILE_END(cmdList);
+	}
+
+	// Copy Back
+	{
+		GPU_PROFILE_BEGIN(cmdList, "CopyBack");
+
+		CD3DX12_RESOURCE_BARRIER barriers[] = {
+			// Temp (UAV -> Source)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+			// Main (UAV -> Dest)
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(),     D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),      D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),       D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST),
+		};
+		cmdList->ResourceBarrier(6, barriers);
+
+		cmdList->CopyResource(m_PosPred.Get(), m_TempPosPred.Get());
+		cmdList->CopyResource(m_PosOld.Get(), m_TempPosOld.Get());
+		cmdList->CopyResource(m_VelIn.Get(), m_TempVel.Get());
+
+		CD3DX12_RESOURCE_BARRIER restoreBarriers[] = {
+			// Main: Dest -> UAV
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosPred.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_PosOld.Get(),  D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_VelIn.Get(),   D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+
+			// Temp: Source -> UAV
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosOld.Get(),  D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+		};
+		cmdList->ResourceBarrier(6, restoreBarriers);
+
+		GPU_PROFILE_END(cmdList);
+	}
+}
+
+void SphSolver::BuildGrid(ID3D12GraphicsCommandList* cmdList)
+{
+	GPU_PROFILE_BEGIN(cmdList, "Build Grid");
+
+	cmdList->SetPipelineState(m_ClearGridPSO.Get());
+
+	UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
+	cmdList->Dispatch(gridGroups, 1, 1);
+
+	auto gridBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_GridIndices.Get());
+	cmdList->ResourceBarrier(1, &gridBarrier);
+
+	cmdList->SetPipelineState(m_BuildGridPSO.Get());
+	cmdList->Dispatch(m_Groups, 1, 1);
+
+	cmdList->ResourceBarrier(1, &gridBarrier);
+
 	GPU_PROFILE_END(cmdList);
 }
 
@@ -870,6 +922,8 @@ void SphSolver::ResetSimulation(ID3D12GraphicsCommandList* cmdList)
 	UploadData(cmdList, m_PosPred, m_InitPos, m_NumParticles, sizeof(SM::Vector3));
 	UploadData(cmdList, m_VelOut, m_Zero3, m_NumParticles, sizeof(SM::Vector3));
 	UploadData(cmdList, m_Density, m_Zero1, m_NumParticles, sizeof(float));
+	UploadData(cmdList, m_DiffuseParticles, m_DiffuseParticlesData, m_DiffuseParams.MaxDiffuseParticles, sizeof(DiffuseParticle));
+	UploadData(cmdList, m_Counters, m_CounterValues, 2, sizeof(UINT));
 }
 
 template <typename T>

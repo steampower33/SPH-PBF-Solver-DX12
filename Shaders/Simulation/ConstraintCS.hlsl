@@ -9,7 +9,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= numParticles)
         return;
     
-    float3 p = g_PosPred[id] + g_DeltaPos[id];
+    float3 p = g_RW_PosPred[id] + g_RW_DeltaPos[id];
 
     float radius = 0.1;
     
@@ -35,5 +35,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
     else if (p.z > maxBox.z)
         p.z = maxBox.z - jitter;
 
-    g_PosPred[id] = p;
+    g_RW_PosPred[id] = p;
 }

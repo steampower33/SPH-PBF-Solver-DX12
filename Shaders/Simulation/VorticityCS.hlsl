@@ -48,7 +48,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         
                         // Eq (15): curl = Sum( v_ij x gradW )
                         float3 v_ij = g_VelIn[j] - vi;
-                        float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+                        float3 gradW = (rVec / r) * SpikyKernelGrad(r, h);
 
                         vorticity += cross(v_ij, gradW);
                     }
@@ -58,5 +58,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
     }
     
     float volume = g_SP.Mass / g_SP.RestDensity;
-    g_Vorticity[id] = vorticity * volume;
+    g_RW_Vorticity[id] = vorticity * volume;
 }

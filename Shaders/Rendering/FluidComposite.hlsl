@@ -1,5 +1,3 @@
-#include "RenderCommon.hlsli"
-
 Texture2D<float> g_DepthMap : register(t0);
 Texture2D<float> g_Thickness : register(t2);
 Texture2D<float4> g_SceneTex : register(t3);
@@ -131,8 +129,9 @@ float4 main(VSOutput input) : SV_Target
     float3 H = normalize(L + V);
     float3 N = N_world;
     
-    float roughness = 0.15;
-    float F0 = 0.04;
+    float roughness = 0.05;
+    float3 F0 = float3(0.02, 0.02, 0.02);
+
     float NdotH = max(dot(N, H), 0.0);
     float NdotV = max(dot(N, V), 0.0);
     float NdotL = max(dot(N, L), 0.0);
@@ -144,12 +143,10 @@ float4 main(VSOutput input) : SV_Target
     float3 numerator = D * G * F;
     float denominator = 4.0 * NdotV * NdotL + 0.001;
     float3 specular = numerator / denominator;
-    float spotEffect = 1.0;
-    float3 lightColor = float3(1.0, 1.0, 1.0);
 
     float thickness = g_Thickness.Sample(g_LinearClamp, input.UV).r;
 
-    float3 absorptionCoef = float3(4.0, 1.5, 0.8);
+    float3 absorptionCoef = float3(1.5, 0.6, 0.1);
     float3 transmittance = exp(-absorptionCoef * thickness);
 
     float diffuseWrap = (dot(N, L) * 0.5 + 0.5);
@@ -158,19 +155,29 @@ float4 main(VSOutput input) : SV_Target
     
     float3 finalTransmittance = transmittance * lightIntensity;
 
-    float distortionStrength = 0.2;
-    float2 refractionUV = input.UV + N_view.xy * distortionStrength * saturate(thickness);
-    float3 sceneColor = g_SceneTex.Sample(g_LinearClamp, refractionUV).rgb;
+    float distortionScale = 0.05;
+    float2 refractionOffset = N_view.xy * distortionScale * saturate(thickness);
+    float2 refractionUV = input.UV + refractionOffset;
 
-    float3 refractedColor = sceneColor * finalTransmittance;
+    float bgDepth = ViewPos(refractionUV).z;
+    float myDepth = posCenter.z;
+
+    if (bgDepth < myDepth)
+    {
+        refractionUV = input.UV;
+    }
+
+    float3 sceneColor = g_SceneTex.Sample(g_LinearClamp, refractionUV).rgb;
+    float3 scatterColor = float3(0.0, 0.2, 0.3);
+    float3 refractedColor = sceneColor * transmittance + scatterColor * (1.0 - transmittance) * 0.5;
 
     float3 viewDir = normalize(worldPos - g_CamPos);
     float3 R = reflect(viewDir, N);
     float3 reflectionColor = GetProceduralSky(R);
 
-    float3 finalSpecular = specular * lightColor;
-
-    float3 finalColor = lerp(refractedColor, reflectionColor, F) + finalSpecular;
+    float3 finalColor = lerp(refractedColor, reflectionColor, F);
+    
+    finalColor += specular * float3(1.0, 1.0, 1.0) * g_ShadowIntensity;
 
     return float4(finalColor, 1.0);
 }

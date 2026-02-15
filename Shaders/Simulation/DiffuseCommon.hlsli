@@ -64,6 +64,8 @@ struct DiffuseParams
     int BubbleClassifyMinNeighbours;
     
     float BubbleBuoyancy;
+    float FluidAccelMul;
+    int GeneratePerFrame;
 };
 
 cbuffer CB_DiffuseParams : register(b1)

@@ -10,19 +10,17 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= numParticles)
         return;
     
-    float3 pi = g_PosPred[id];
-    float3 vi = g_VelIn[id];
-    
-    float3 old_pi = g_PosOld[id];
-    
-    float3 disp = pi - old_pi;
-    
     float dt = g_SP.DeltaTime;
     
-    if (dt > 1e-6f)
+    float3 pi = g_PosPred[id];
+    float3 old_pi = g_PosOld[id];
+    float3 disp = pi - old_pi;
+    
+    float3 vi = 0.0;
+    if (dt > 1e-6)
         vi = disp / dt;
     else
-        vi = 0.0f;
+        vi = 0.0;
 
     float3 viscosityForce = float3(0, 0, 0);
     float3 eta = float3(0, 0, 0);
@@ -59,14 +57,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         continue;
 
                     float3 pj = g_PosPred[j];
-                    float3 vj = g_VelIn[j];
                     float3 rVec = pi - pj;
                     float rSq = dot(rVec, rVec);
 
                     if (rSq < hSq && rSq > 1e-6)
                     {
                         float r = sqrt(rSq);
-
+                        
+                        float3 vj = g_VelIn[j];
+                        
                         // --- [A] XSPH Viscosity Accumulation ---
                         // Formula: v_new = v + c * Sum((v_j - v_i) * W)
                         float3 v_diff = vj - vi;
@@ -78,7 +77,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                         float omegaLenJ = length(omegaJ);
                         
                         // Gradient of W points towards self (normalized rVec)
-                        float3 gradW = normalize(rVec) * SpikyKernelGrad(r, h);
+                        float3 gradW = (rVec / r) * SpikyKernelGrad(r, h);
                         eta += (omegaLenJ - myOmegaLen) * gradW;
                     }
                 }
@@ -103,5 +102,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
         vi -= vorticityForce * dt;
     }
     
-    g_VelOut[id] = vi;
+    g_RW_VelOut[id] = vi;
 }

@@ -8,7 +8,7 @@ public:
 	struct SimParams
 	{
 		UINT NumParticles;
-		float DeltaTime = 1.0f / 120.0f;
+		float DeltaTime;
 		float CellSize = 0.2f;
 		UINT GridDim = 128;
 
@@ -44,6 +44,7 @@ public:
 
 	// [Getters]
 	UINT GetNumParticles() const { return m_NumParticles; }
+	UINT GetNumDiffuseParticles() const { return m_DiffuseParams.MaxDiffuseParticles; }
 	const SimParams& GetSimParams() const { return m_SimParams; }
 	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
 	ID3D12DescriptorHeap* GetGlobalHeap() const { return m_GlobalHeap.Get(); }
@@ -53,6 +54,7 @@ public:
 	UINT GetDensitySrvIndex() const { return SRV_IDX_DENSITY_RENDER; }
 	UINT GetDiffuseSrvIndex() const { return SRV_IDX_DIFFUSE_PARTICLES_RENDER; }
 	UINT GetDescriptorSize() const { return m_CbvSrvUavDescriptorSize; }
+	ID3D12Resource* GetDiffuseParticleResource() const { return m_DiffuseParticles.Get(); }
 
 	void ToggleWallMovement() { m_bWallMove = !m_bWallMove; }
 
@@ -65,14 +67,17 @@ private:
 	float m_OriginMinX = 0.0f;
 	float m_WallSpeed = 2.0f;
 	float m_WallAmplitude = 3.0f;
-	float m_Spacing = 0.1f;
+	float m_Spacing = 0.10f;
 
 	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
 	bool m_bCornerDamBreak = true;
 
-	// Data
-	UINT m_NumParticles = 0;
+	UINT m_Groups = 0;
+	int m_X = 128;
+	int m_Y = 64;
+	int m_Z = 64;
+	UINT m_NumParticles = m_X * m_Y * m_Z;
 
 	std::vector<SM::Vector3> m_InitPos;
 	std::vector<float>		 m_Zero1;
@@ -116,12 +121,71 @@ private:
 		SRV_IDX_INDICES,     // t3
 		SRV_IDX_VEL_OUT,     // t4
 		SRV_IDX_GRID_INDICES,// t5
+		SRV_IDX_LAMBDA,		 // t6
+		SRV_IDX_VORTICITY,   // t7
 
 		SRV_IDX_DENSITY_RENDER,
 		SRV_IDX_DIFFUSE_PARTICLES_RENDER,
 
 		DESCRIPTOR_COUNT
 	};
+
+	enum RootParamIdx {
+		RP_CB_SIM_PARAMS = 0,
+		RP_CB_SORT_OR_DIFFUSE_PARAMS = 1,
+		RP_DT_UAV = 2,
+		RP_DT_SRV = 3,
+		RP_DT_UAV_DIFFUSE = 4
+	};
+
+	enum BufferBarrierIndex
+	{
+		UAV_BARRIER_POS_PRED = 0,
+		TRANS_SRV_POS_PRED,
+		TRANS_UAV_POS_PRED, 
+
+		TRANS_SRV_POS_OLD,
+		TRANS_UAV_POS_OLD,
+
+		TRANS_SRV_VEL_IN,
+		TRANS_UAV_VEL_IN,
+
+		UAV_BARRIER_VEL_OUT,
+		TRANS_SRV_VEL_OUT,
+		TRANS_UAV_VEL_OUT,
+
+		TRANS_SRV_GRID_INDICES,
+		TRANS_UAV_GRID_INDICES,
+
+		UAV_BARRIER_LAMBDA,
+		TRANS_SRV_LAMBDA,
+		TRANS_UAV_LAMBDA,
+
+		UAV_BARRIER_DENSITY,
+
+		UAV_BARRIER_DELTAPOS,
+
+		UAV_BARRIER_VORTICITY,
+		TRANS_SRV_VORTICITY,
+		TRANS_UAV_VORTICITY,
+
+		UAV_BARRIER_DIFFUSE,
+		TRANS_UAV_DIFFUSE,
+		TRANS_SRV_DIFFUSE,
+
+		UAV_BARRIER_DIFFUSE_COMPACT,
+
+		UAV_BARRIER_COUNTERS,
+
+		TRANS_UAV_DISPATCH_ARGS,
+		TRANS_INDIRECT_DISPATCH_ARGS,
+		TRANS_UAV_DRAW_ARGS,
+		TRANS_INDIRECT_DRAW_ARGS,
+
+		NUM_BARRIERS
+	};
+
+	CD3DX12_RESOURCE_BARRIER m_AllBarriers[NUM_BARRIERS];
 
 	struct SortConstants {
 		UINT BlockSize;
@@ -154,21 +218,23 @@ private:
 		float TrappedAirMax = 20.0f;
 
 		float K_Ta = 100.0f;
-		float WaveCrestMin = 0.6f;
+		float WaveCrestMin = 0.7f;
 		float WaveCrestMax = 0.9f;
-		float K_Wc = 100.0f;
+		float K_Wc = 200.0f;
 
 		float EnergyMin = 10.0f;
 		float EnergyMax = 20.0f;
-		float MaxLifeTime = 20.0f;
+		float MaxLifeTime = 4.0f;
 		float CellSizeScale = 1.0f;
 
 		float BubbleScale = 4.0f;
-		float BubbleScaleChangeSpeed = 8.0f;
+		float BubbleScaleChangeSpeed = 10.0f;
 		int SprayClassifyMaxNeighbours = 2;
 		int BubbleClassifyMinNeighbours = 8;
 
-		float BubbleBuoyancy = 1.5f;
+		float BubbleBuoyancy = 2.0f;
+		float FluidAccelMul = 20.0f;
+		int GeneratePerFrame = 32;
 	} m_DiffuseParams;
 
 	struct DiffuseParticle
@@ -176,7 +242,8 @@ private:
 		SM::Vector4 PositionLife;
 		SM::Vector4 VelocityScale;
 	};
-	UINT m_ZeroValues[2] = { 0, 0 };
+	std::vector<UINT> m_CounterValues = { 0, 0 };
+	std::vector<DiffuseParticle> m_DiffuseParticlesData = {};
 	ComPtr<ID3D12Resource> m_DiffuseParticles;
 	ComPtr<ID3D12Resource> m_DiffuseParticlesCompacted;
 	ComPtr<ID3D12Resource> m_Counters;
@@ -223,6 +290,7 @@ private:
 	ComPtr<ID3D12PipelineState> m_VorticityPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateVelocityPSO;
 
+	ComPtr<ID3D12PipelineState> m_ClearCounterPSO;
 	ComPtr<ID3D12PipelineState> m_DiffuseGenerationPSO;
 	ComPtr<ID3D12PipelineState> m_BuildDispatchArgsPSO;
 	ComPtr<ID3D12PipelineState> m_UpdateDiffusePSO;
@@ -232,7 +300,10 @@ private:
 	ID3D12Device* m_pDevice = nullptr;
 
 	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
+	void PermuteAndCopyBack(ID3D12GraphicsCommandList* cmdList);
+	void BuildGrid(ID3D12GraphicsCommandList* cmdList);
 
+	void InitBarriers();
 	void CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers);
 	void ResetParticlePos();
 	void CreateAllViews(ID3D12Device* device);

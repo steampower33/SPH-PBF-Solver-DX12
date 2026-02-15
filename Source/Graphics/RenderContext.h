@@ -38,9 +38,10 @@ struct RenderContext
         SM::Matrix View;
         SM::Matrix Proj;
         float VisualRadius = 0.05f;
-        float ThicknessCoeff = 0.05f;
+        float ThicknessCoeff = 0.10f;
     } Globals;
 
+    SM::Vector2 InvScreenSize;
     SM::Matrix ViewProj;
     SM::Matrix InvView;
     SM::Matrix InvProj;

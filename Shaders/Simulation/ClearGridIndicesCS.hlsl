@@ -1,6 +1,6 @@
 #include "Common.hlsli"
 
-RWStructuredBuffer<uint2> g_GridIndices : register(u8);
+RWStructuredBuffer<uint2> g_RW_GridIndices : register(u8);
 
 cbuffer CB_SimParams : register(b0)
 {
@@ -17,5 +17,5 @@ void main(uint3 DTid : SV_DispatchThreadID)
     if (id >= numCells)
         return;
 
-    g_GridIndices[id] = uint2(0xFFFFFFFF, 0xFFFFFFFF);
+    g_RW_GridIndices[id] = uint2(0xFFFFFFFF, 0xFFFFFFFF);
 }

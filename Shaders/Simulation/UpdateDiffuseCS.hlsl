@@ -7,19 +7,20 @@ void ResolveCollisions(in uint id, inout float3 p, inout float3 v)
     float3 minBox = float3(g_SP.BoxX.x, g_SP.BoxY.x, g_SP.BoxZ.x) + radius;
     float3 maxBox = float3(g_SP.BoxX.y, g_SP.BoxY.y, g_SP.BoxZ.y) - radius;
 
-    uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
-    float randVal = Random01(seed);
-    float jitter = randVal * g_SP.JitterFactor;
     float restitution = 0.1;
    
     if (p.x < minBox.x)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.x = minBox.x + jitter;
         if (v.x < 0)
             v.x *= -restitution;
     }
     else if (p.x > maxBox.x)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.x = maxBox.x - jitter;
         if (v.x > 0)
             v.x *= -restitution;
@@ -27,12 +28,16 @@ void ResolveCollisions(in uint id, inout float3 p, inout float3 v)
 
     if (p.y < minBox.y)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.y = minBox.y + jitter;
         if (v.y < 0)
             v.y *= -restitution;
     }
     else if (p.y > maxBox.y)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.y = maxBox.y - jitter;
         if (v.y > 0)
             v.y *= -restitution;
@@ -40,12 +45,16 @@ void ResolveCollisions(in uint id, inout float3 p, inout float3 v)
 
     if (p.z < minBox.z)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.z = minBox.z + jitter;
         if (v.z < 0)
             v.z *= -restitution;
     }
     else if (p.z > maxBox.z)
     {
+        uint seed = id + uint(g_DP.DiffuseDeltaTime * 12345.0);
+        float jitter = Random01(seed) * g_SP.JitterFactor;
         p.z = maxBox.z - jitter;
         if (v.z > 0)
             v.z *= -restitution;
@@ -108,8 +117,6 @@ void main(uint3 id : SV_DispatchThreadID)
                     
                     if (rSq < checkHSq && rSq > 1e-6f)
                     {
-                        float r = sqrt(rSq);
-
                         float W = Poly6Kernel(rSq, gridH);
     
                         velocitySum += g_VelOut[j] * W;
@@ -125,7 +132,7 @@ void main(uint3 id : SV_DispatchThreadID)
     bool isSpray = neighbourCount <= g_DP.SprayClassifyMaxNeighbours;
     bool isBubble = neighbourCount >= g_DP.BubbleClassifyMinNeighbours;
     bool isFoam = !(isSpray || isBubble);
-    float3 fluidAvgVel = (weightSum > 1e-5) ? (velocitySum / weightSum) : float3(0, 0, 0);
+    float3 fluidAvgVel = (weightSum > 1e-5) ? (velocitySum * (1.0 / weightSum)) : float3(0, 0, 0);
     
     float gravityY = g_SP.GravityY;
     
@@ -137,9 +144,8 @@ void main(uint3 id : SV_DispatchThreadID)
     }
     else if (isBubble)
     {
-        const float fluidAccelMul = 3.0; // How fast the bubble accelerates to match velocity with fluid
         float3 accelerationBuoyancy = float3(0, gravityY, 0) * (1.0 - g_DP.BubbleBuoyancy);
-        float3 accelerationFluid = (fluidAvgVel - p.VelocityScale.xyz) * fluidAccelMul;
+        float3 accelerationFluid = (fluidAvgVel - p.VelocityScale.xyz) * g_DP.FluidAccelMul;
         p.VelocityScale.xyz += (accelerationBuoyancy + accelerationFluid) * dt;
         //p.VelocityScale.w = 2;
     }
@@ -165,4 +171,26 @@ void main(uint3 id : SV_DispatchThreadID)
         InterlockedAdd(g_Counters[1], 1, destIdx);
         g_DiffuseParticlesCompacted[destIdx] = p;
     }
+
+    //bool isAlive = (p.PositionLife.w > 0);
+    
+    //uint waveActiveCount = WaveActiveCountBits(isAlive);
+    //uint wavePrefixCount = WavePrefixCountBits(isAlive);
+    
+    //uint waveBaseIndex = 0;
+    //if (WaveIsFirstLane())
+    //{
+    //    if (waveActiveCount > 0)
+    //    {
+    //        InterlockedAdd(g_Counters[1], waveActiveCount, waveBaseIndex);
+    //    }
+    //}
+    
+    //waveBaseIndex = WaveReadLaneFirst(waveBaseIndex);
+    
+    //if (isAlive)
+    //{
+    //    uint destIdx = waveBaseIndex + wavePrefixCount;
+    //    g_DiffuseParticlesCompacted[destIdx] = p;
+    //}
 }
