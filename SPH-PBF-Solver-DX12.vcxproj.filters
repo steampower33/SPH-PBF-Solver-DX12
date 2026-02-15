@@ -274,5 +274,8 @@
     <FxCompile Include="Shaders\Rendering\DiffusePS.hlsl">
       <Filter>Shaders\Rendering</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Simulation\BitonicSortLdsCS.hlsl">
+      <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

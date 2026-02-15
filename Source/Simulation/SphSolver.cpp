@@ -72,8 +72,6 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 			RunBitonicSort(cmdList);
 		}
 
-		//return;
-
 		// [3] Permute Pass (Data Reordering)
 		{
 			GPU_PROFILE_BEGIN(cmdList, "Permute");
@@ -415,7 +413,8 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreateCommandSignature(device);
 
 	CreateComputePSO(device, shaderHelper, L"IntegrationCS.hlsl", m_IntegrationPSO, m_GlobalRootSig);
-	CreateComputePSO(device, shaderHelper, L"BitonicSortCS.hlsl", m_SortPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"BitonicSortLdsCS.hlsl", m_BitonicSortLdsPSO, m_GlobalRootSig);
+	CreateComputePSO(device, shaderHelper, L"BitonicSortCS.hlsl", m_BitonicSortPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"PermuteDataCS.hlsl", m_PermuteDataPSO, m_PermuteRootSig);
 	CreateComputePSO(device, shaderHelper, L"ClearGridIndicesCS.hlsl", m_ClearGridPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"BuildGridIndicesCS.hlsl", m_BuildGridPSO, m_GlobalRootSig);
@@ -495,7 +494,7 @@ void SphSolver::ResetParticlePos()
 {
 	int m_X = 64;
 	int m_Y = 64;
-	int m_Z = 32;
+	int m_Z = 64;
 
 	m_NumParticles = m_X * m_Y * m_Z;
 
@@ -838,10 +837,17 @@ void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 {
 	GPU_PROFILE_BEGIN(cmdList, "BitonicSort");
 
-	cmdList->SetPipelineState(m_SortPSO.Get());
+	UINT sortBlockSize = 2048;
 
+	cmdList->SetPipelineState(m_BitonicSortLdsPSO.Get());
+	cmdList->Dispatch((m_NumParticles + sortBlockSize - 1) / sortBlockSize, 1, 1);
+	
+	auto ldsBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_SortedIndices.Get());
+	cmdList->ResourceBarrier(1, &ldsBarrier);
+
+	cmdList->SetPipelineState(m_BitonicSortPSO.Get());
 	UINT groups = (m_NumParticles + 255) / 256;
-	for (UINT blockSize = 2; blockSize <= m_NumParticles; blockSize <<= 1) {
+	for (UINT blockSize = sortBlockSize * 2; blockSize <= m_NumParticles; blockSize <<= 1) {
 		for (UINT stride = blockSize >> 1; stride > 0; stride >>= 1) {
 			SortConstants sortConsts = { blockSize, stride, 0, 0 };
 

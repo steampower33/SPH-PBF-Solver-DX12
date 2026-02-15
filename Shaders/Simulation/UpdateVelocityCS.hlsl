@@ -63,7 +63,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     float3 rVec = pi - pj;
                     float rSq = dot(rVec, rVec);
 
-                    if (rSq < hSq && rSq > 1e-6f)
+                    if (rSq < hSq && rSq > 1e-6)
                     {
                         float r = sqrt(rSq);
 
@@ -93,7 +93,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     // [B] Apply Vorticity Confinement
     float etaLen = length(eta);
-    if (etaLen > 1e-6f)
+    if (etaLen > 1e-6)
     {
         // Calculate correction force direction N
         float3 N = eta / etaLen;

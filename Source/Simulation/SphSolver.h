@@ -213,7 +213,8 @@ private:
 	ComPtr<ID3D12PipelineState> m_IntegrationPSO;
 	ComPtr<ID3D12PipelineState> m_ClearGridPSO;
 	ComPtr<ID3D12PipelineState> m_BuildGridPSO;
-	ComPtr<ID3D12PipelineState> m_SortPSO;
+	ComPtr<ID3D12PipelineState> m_BitonicSortLdsPSO;
+	ComPtr<ID3D12PipelineState> m_BitonicSortPSO;
 	ComPtr<ID3D12PipelineState> m_PermuteDataPSO;
 
 	ComPtr<ID3D12PipelineState> m_DensityLambdaPSO;
