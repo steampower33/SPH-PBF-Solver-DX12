@@ -71,12 +71,13 @@ VSOutput main(uint vertexID : SV_VertexID, uint instanceID : SV_InstanceID)
     output.Color = float4(0.9, 0.9, 0.9, BaseAlpha * fadeAlpha);
 
     //float4 color = 1.0;
-    //if (p.VelocityScale.w <= 0.1)
+    //int w = int(p.VelocityScale.w);
+    //if (w == 1)
     //    color = float4(1.0, 0.0, 0.0, 1.0);
-    //else if (p.VelocityScale.w <= 1.1)
+    //else if (w == 2)
     //    color = float4(0.0, 1.0, 0.0, 1.0);
-    //else if (p.VelocityScale.w <= 2.1)
-    //    color = float4(0.0, 0.0, 1.0, 1.0);
+    //else if (w == 3)
+    //    color = float4(1.0, 1.0, 0.0, 1.0);
     
     //output.Color = color;
     

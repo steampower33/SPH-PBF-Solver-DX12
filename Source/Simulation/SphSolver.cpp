@@ -22,7 +22,7 @@ void SphSolver::UpdateInputs()
 
 	if (m_bWallMove)
 	{
-		m_TotalTime += m_SimParams.DeltaTime;
+		m_TotalTime += m_FixedDt;
 		float animationFactor = 0.5f * (1.0f - cosf(m_TotalTime * m_WallSpeed));
 		m_SimParams.BoxX.x = m_OriginMinX + (m_WallAmplitude * animationFactor);
 	}
@@ -56,11 +56,15 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 
 		// [1] Integration Pass
 		{
+			GPU_PROFILE_BEGIN(cmdList, "Integration");
+
 			cmdList->SetPipelineState(m_IntegrationPSO.Get());
 
 			cmdList->Dispatch(groups, 1, 1);
 
 			cmdList->ResourceBarrier(1, &posPredBarrier);
+
+			GPU_PROFILE_END(cmdList);
 		}
 
 		// [2] Sort Pass
@@ -68,8 +72,12 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 			RunBitonicSort(cmdList);
 		}
 
+		//return;
+
 		// [3] Permute Pass (Data Reordering)
 		{
+			GPU_PROFILE_BEGIN(cmdList, "Permute");
+
 			auto sortedIndicesUAVtoSRV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 			cmdList->ResourceBarrier(1, &sortedIndicesUAVtoSRV);
 
@@ -92,10 +100,14 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 
 			auto sortedIndicesSRVtoUAV = CD3DX12_RESOURCE_BARRIER::Transition(m_SortedIndices.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 			cmdList->ResourceBarrier(1, &sortedIndicesSRVtoUAV);
+
+			GPU_PROFILE_END(cmdList);
 		}
 
 		// [4] Copy Back
 		{
+			GPU_PROFILE_BEGIN(cmdList, "CopyBack");
+
 			CD3DX12_RESOURCE_BARRIER barriers[] = {
 				// Temp (UAV -> Source)
 				CD3DX12_RESOURCE_BARRIER::Transition(m_TempPosPred.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
@@ -124,6 +136,8 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 				CD3DX12_RESOURCE_BARRIER::Transition(m_TempVel.Get(),     D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
 			};
 			cmdList->ResourceBarrier(6, restoreBarriers);
+
+			GPU_PROFILE_END(cmdList);
 		}
 
 		cmdList->SetComputeRootSignature(m_GlobalRootSig.Get());
@@ -133,6 +147,8 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 
 		// [5] Grid Pass
 		{
+			GPU_PROFILE_BEGIN(cmdList, "Set Grid");
+
 			cmdList->SetPipelineState(m_ClearGridPSO.Get());
 
 			UINT gridGroups = (m_SimParams.GridDim * m_SimParams.GridDim * m_SimParams.GridDim + 255) / 256;
@@ -145,10 +161,13 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 			cmdList->Dispatch(groups, 1, 1);
 
 			cmdList->ResourceBarrier(1, &gridBarrier);
+
+			GPU_PROFILE_END(cmdList);
 		}
 
 		// [5] Solver Iteration
 		{
+
 			CD3DX12_RESOURCE_BARRIER DensityLambda[] = {
 				CD3DX12_RESOURCE_BARRIER::UAV(m_Density.Get()),
 				CD3DX12_RESOURCE_BARRIER::UAV(m_Lambda.Get())
@@ -162,36 +181,44 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 			for (int iter = 0; iter < m_Iterations; ++iter)
 			{
 				// Density & Lambda
+				GPU_PROFILE_BEGIN(cmdList, "DensityLambda");
 				cmdList->SetPipelineState(m_DensityLambdaPSO.Get());
 				cmdList->Dispatch(groups, 1, 1);
-
 				cmdList->ResourceBarrier(2, DensityLambda);
+				GPU_PROFILE_END(cmdList);
+
 
 				// Delta Pos
+				GPU_PROFILE_BEGIN(cmdList, "Delta Pos");
 				cmdList->SetPipelineState(m_DeltaPosPSO.Get());
 				cmdList->Dispatch(groups, 1, 1);
-
 				cmdList->ResourceBarrier(2, PredDelta);
+				GPU_PROFILE_END(cmdList);
+
 
 				// Constraint Apply
+				GPU_PROFILE_BEGIN(cmdList, "Constraint Apply");
 				cmdList->SetPipelineState(m_ConstraintPSO.Get());
 				cmdList->Dispatch(groups, 1, 1);
-
 				cmdList->ResourceBarrier(1, &posPredBarrier);
+				GPU_PROFILE_END(cmdList);
 			}
+
 		}
 
+		GPU_PROFILE_BEGIN(cmdList, "Vorticity");
 		cmdList->SetPipelineState(m_VorticityPSO.Get());
 		cmdList->Dispatch(groups, 1, 1);
-
 		auto vorticityBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Vorticity.Get());
 		cmdList->ResourceBarrier(1, &vorticityBarrier);
+		GPU_PROFILE_END(cmdList);
 
+		GPU_PROFILE_BEGIN(cmdList, "Update Velocity");
 		cmdList->SetPipelineState(m_UpdateVelocityPSO.Get());
 		cmdList->Dispatch(groups, 1, 1);
-
 		auto velOutBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_VelOut.Get());
 		cmdList->ResourceBarrier(1, &velOutBarrier);
+		GPU_PROFILE_END(cmdList);
 	}
 
 	// Diffuse Particle
@@ -466,24 +493,30 @@ void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* c
 
 void SphSolver::ResetParticlePos()
 {
+	int m_X = 64;
+	int m_Y = 64;
+	int m_Z = 32;
+
+	m_NumParticles = m_X * m_Y * m_Z;
+
+	m_SimParams.BoxY = { 0.0f, 20.0f };
+
+	m_Zero1.resize(m_NumParticles, 0.0f);
+	m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
+
+	m_InitPos.resize(m_NumParticles);
+
+	float offset = 0.2f;
+
 	auto CornerDamBreak = [&]()
 		{
-			int m_X = 64;
-			int m_Y = 64;
-			int m_Z = 32;
+			float halfWidthX = 7.0f;
+			float halfWidthZ = 4.0f;
 
-			m_NumParticles = m_X * m_Y * m_Z;
+			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
+			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
-			m_Zero1.resize(m_NumParticles, 0.0f);
-			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-			m_InitPos.resize(m_NumParticles);
-
-			m_SimParams.BoxX = { -7.0f, 7.0f };
-			m_OriginMinX = -7.0f;
-			m_SimParams.BoxZ = { -4.0f, 4.0f };
-
-			float offset = 0.2f;
+			m_OriginMinX = m_SimParams.BoxX.x;
 
 			float startX = m_SimParams.BoxX.x + offset; // up
 			float startY = m_SimParams.BoxY.x + offset; // up
@@ -504,22 +537,11 @@ void SphSolver::ResetParticlePos()
 
 	auto SingleDamBreak = [&]()
 		{
-			int m_X = 64;
-			int m_Y = 64;
-			int m_Z = 32;
+			float halfWidthX = 7.0f;
+			float halfWidthZ = 4.0f;
 
-			m_NumParticles = m_X * m_Y * m_Z;
-
-			m_Zero1.resize(m_NumParticles, 0.0f);
-			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-			m_InitPos.resize(m_NumParticles);
-
-			m_SimParams.BoxX = { -8.0f, 8.0f };
-			m_OriginMinX = -8.0f;
-			m_SimParams.BoxZ = { -4.0f, 4.0f };
-
-			float offset = 0.2f;
+			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
+			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
 			float startX = m_SimParams.BoxX.x + offset; // up
 			float startY = m_SimParams.BoxY.x + offset; // up
@@ -540,22 +562,11 @@ void SphSolver::ResetParticlePos()
 
 	auto DoubleDamBreak = [&]()
 		{
-			int m_X = 32;
-			int m_Y = 64;
-			int m_Z = 64;
+			float halfWidthX = 5.0f;
+			float halfWidthZ = 5.0f;
 
-			m_NumParticles = m_X * m_Y * m_Z;
-
-			m_Zero1.resize(m_NumParticles, 0.0f);
-			m_Zero3.resize(m_NumParticles, SM::Vector3(0.0f));
-
-			m_InitPos.resize(m_NumParticles);
-
-			m_SimParams.BoxX = { -5.5f, 5.5f };
-			m_SimParams.BoxZ = { -5.5f, 5.5f };
-			m_OriginMinX = -5.5f;
-
-			float offset = 0.2f;
+			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
+			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
 
 			UINT halfX = m_X;
 			UINT halfY = m_Y;
@@ -825,6 +836,8 @@ void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
 
 void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 {
+	GPU_PROFILE_BEGIN(cmdList, "BitonicSort");
+
 	cmdList->SetPipelineState(m_SortPSO.Get());
 
 	UINT groups = (m_NumParticles + 255) / 256;
@@ -840,6 +853,8 @@ void SphSolver::RunBitonicSort(ID3D12GraphicsCommandList* cmdList)
 			cmdList->ResourceBarrier(1, &barrier);
 		}
 	}
+
+	GPU_PROFILE_END(cmdList);
 }
 
 void SphSolver::ResetSimulation(ID3D12GraphicsCommandList* cmdList)

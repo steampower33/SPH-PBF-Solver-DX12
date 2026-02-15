@@ -69,7 +69,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
                     if (id == j)
                         continue;
                     float3 pj = g_PosPred[j];
-                    float3 rVec = pi - pj;
+                    float3 rVec = pi - pj; // j -> i
                     float rSq = dot(rVec, rVec);
 
                     if (rSq < checkHSq && rSq > 1e-6)
@@ -93,18 +93,15 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     float I_ta = GetPotential(v_diff, g_DP.TrappedAirMin, g_DP.TrappedAirMax);
     
-    float3 n_hat = normalize(normal);
+    float3 n_hat = -normalize(normal); // reverse
     float curvature = saturate(dot(normalize(vi), n_hat));
     float I_wc = GetPotential(curvature, g_DP.WaveCrestMin, g_DP.WaveCrestMax);
-    if (dot(normalize(vi), n_hat) < 0.6)
-    {
-        I_wc = 0;
-    }
+    
     float energy = 0.5 * dot(vi, vi);
     float I_k = GetPotential(energy, g_DP.EnergyMin, g_DP.EnergyMax);
 
     float n_d = (g_DP.kTa * I_ta + g_DP.kWc * I_wc) * I_k * dt;
-    n_d = min(n_d, 32.0);
+    n_d = min(n_d, 64.0);
     
     uint rngState = WangHash(id + uint(dt * 12345.0) + asuint(pi.x));
     

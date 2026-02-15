@@ -17,19 +17,19 @@ public:
 		float Viscosity = 0.10f;
 		float GravityY = -9.81f;
 
-		SM::Vector2 BoxX = { -7.0f, 7.0f };
-		SM::Vector2 BoxY = { 0.0f, 20.0f };
+		SM::Vector2 BoxX;
+		SM::Vector2 BoxY;
 
-		SM::Vector2 BoxZ = { -4.0f, 4.0f };
-		float Epsilon = 100.0f;
-		float K = 0.00001f;
+		SM::Vector2 BoxZ;
+		float Epsilon = 600.0f;
+		float K = 0.001f;
 
 		float N = 4.0f;
 		float DqScale = 0.3f;
-		float VorticityEpsilon = 0.2f;
+		float VorticityEpsilon = 0.4f;
 		float ExternalAccel = 0.0f;
 
-		float JitterFactor = 0.010f;
+		float JitterFactor = 0.005f;
 	} m_SimParams;
 
 	bool m_bSolveDiffuseParticles = true;
@@ -64,12 +64,12 @@ private:
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
 	float m_WallSpeed = 2.0f;
-	float m_WallAmplitude = 4.0f;
+	float m_WallAmplitude = 3.0f;
 	float m_Spacing = 0.1f;
 
-	bool m_bSingleDamBreak = true;
+	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
-	bool m_bCornerDamBreak = false;
+	bool m_bCornerDamBreak = true;
 
 	// Data
 	UINT m_NumParticles = 0;
@@ -150,22 +150,22 @@ private:
 	{
 		UINT MaxDiffuseParticles = 64 * 64 * 64;
 		float DiffuseDeltaTime = 1.0f / 60.0f;
-		float TrappedAirMin = 1.0f;
-		float TrappedAirMax = 4.0f;
+		float TrappedAirMin = 5.0f;
+		float TrappedAirMax = 20.0f;
 
-		float K_Ta = 50.0f;
+		float K_Ta = 100.0f;
 		float WaveCrestMin = 0.6f;
 		float WaveCrestMax = 0.9f;
-		float K_Wc = 80.0f;
+		float K_Wc = 100.0f;
 
 		float EnergyMin = 10.0f;
 		float EnergyMax = 20.0f;
-		float MaxLifeTime = 4.0f;
+		float MaxLifeTime = 20.0f;
 		float CellSizeScale = 1.0f;
 
 		float BubbleScale = 4.0f;
 		float BubbleScaleChangeSpeed = 8.0f;
-		int SprayClassifyMaxNeighbours = 3;
+		int SprayClassifyMaxNeighbours = 2;
 		int BubbleClassifyMinNeighbours = 8;
 
 		float BubbleBuoyancy = 1.5f;

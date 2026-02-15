@@ -47,3 +47,19 @@ namespace SM = DirectX::SimpleMath;
 #include "imgui_impl_dx12.h"
 
 #include "Helpers.h"
+
+#include <pix3.h>
+
+#if defined(_DEBUG)
+#define ENABLE_PIX_MARKERS
+#endif
+
+#ifdef ENABLE_PIX_MARKERS
+
+#define GPU_PROFILE_BEGIN(commandList, formatString, ...) \
+        PIXBeginEvent(commandList, PIX_COLOR_DEFAULT, formatString, __VA_ARGS__)
+
+#define GPU_PROFILE_END(commandList) \
+        PIXEndEvent(commandList)
+
+#endif

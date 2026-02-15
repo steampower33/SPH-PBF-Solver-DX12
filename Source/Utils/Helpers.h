@@ -25,6 +25,7 @@ inline void ThrowIfFailed(HRESULT hr)
 }
 
 namespace Helpers {
+
 	inline void CreateRootSignature(
 		ID3D12Device* device,
 		const CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC& rootSigDesc,

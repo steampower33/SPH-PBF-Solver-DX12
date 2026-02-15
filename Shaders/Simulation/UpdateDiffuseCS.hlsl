@@ -133,7 +133,7 @@ void main(uint3 id : SV_DispatchThreadID)
     {
         p.VelocityScale.xyz = fluidAvgVel;
         p.PositionLife.w -= dt;
-        //p.VelocityScale.w = 0;
+        //p.VelocityScale.w = 1;
     }
     else if (isBubble)
     {
@@ -141,7 +141,7 @@ void main(uint3 id : SV_DispatchThreadID)
         float3 accelerationBuoyancy = float3(0, gravityY, 0) * (1.0 - g_DP.BubbleBuoyancy);
         float3 accelerationFluid = (fluidAvgVel - p.VelocityScale.xyz) * fluidAccelMul;
         p.VelocityScale.xyz += (accelerationBuoyancy + accelerationFluid) * dt;
-        //p.VelocityScale.w = 1;
+        //p.VelocityScale.w = 2;
     }
     else if (isSpray)
     {
@@ -150,7 +150,7 @@ void main(uint3 id : SV_DispatchThreadID)
         float sqrSpeed = dot(vel, vel);
         float3 drag = -normalize(vel) * sqrSpeed * dragMultiplier;
         p.VelocityScale.xyz += (float3(0, gravityY, 0) + drag) * dt;
-        //p.VelocityScale.w = 2;
+        //p.VelocityScale.w = 3;
     }
     
     float targetScale = isBubble ? g_DP.BubbleScale : 1;

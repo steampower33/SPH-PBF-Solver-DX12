@@ -99,9 +99,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
         float3 N = eta / etaLen;
         
         // Force F = epsilon * (N x omega)
-        // Apply force to velocity: v += F * dt
         float3 vorticityForce = g_SP.VorticityEpsilon * cross(N, myOmega);
-        vi += vorticityForce * dt;
+        vi -= vorticityForce * dt;
     }
     
     g_VelOut[id] = vi;
