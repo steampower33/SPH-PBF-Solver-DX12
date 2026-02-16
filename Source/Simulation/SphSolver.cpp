@@ -20,6 +20,9 @@ void SphSolver::UpdateInputs()
 	else if (GetAsyncKeyState('C') & 0x8000)
 		m_bCornerDamBreak = true;
 
+	if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
+		m_bWallMove = !m_bWallMove;
+
 	if (m_bWallMove)
 	{
 		m_TotalTime += m_FixedDt;
@@ -52,7 +55,7 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 	cmdList->SetComputeRootDescriptorTable(RP_DT_UAV, uavBaseHandle);
 	cmdList->SetComputeRootDescriptorTable(RP_DT_SRV, srvBaseHandle);
 
-	m_SimParams.DeltaTime = m_FixedDt / m_Substeps;
+	m_SimParams.DeltaTime = (m_Substeps == 1) ? m_FixedDt : m_FixedDt / m_Substeps;
 
 	for (int s = 0; s < m_Substeps; ++s)
 	{
@@ -238,7 +241,7 @@ void SphSolver::OnGui()
 		float realMS = 1000.0f / realFPS;
 		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Real: %.1f FPS (%.3f ms)", realFPS, realMS);
 
-		float fps = (m_SimParams.DeltaTime > 0.0f) ? (int)(1.0f / m_SimParams.DeltaTime) : 60.0f;
+		float fps = (m_SimParams.DeltaTime > 0.0f) ? (1.0f / m_SimParams.DeltaTime) : 60.0f;
 		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Sim Fixed: %.1f FPS", fps);
 
 		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
@@ -470,8 +473,8 @@ void SphSolver::ResetParticlePos()
 
 	float offset = 0.2f;
 
-	float halfWidthX = 8.0f;
-	float halfWidthZ = 8.0f;
+	float halfWidthX = 11.0f;
+	float halfWidthZ = 4.0f;
 
 	auto CornerDamBreak = [&]()
 		{

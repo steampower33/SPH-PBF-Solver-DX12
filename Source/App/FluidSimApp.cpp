@@ -9,7 +9,7 @@ bool FluidSimApp::Run()
 	GameTimer timer;
 	timer.Reset();
 
-	float timeAccumulator = 0.0f;
+	//float timeAccumulator = 0.0f;
 
 	bool bIsExit = false;
 
@@ -38,10 +38,6 @@ bool FluidSimApp::Run()
 		if (GetAsyncKeyState(VK_SPACE) & 0x0001)
 		{
 			m_Gui.m_IsPaused = !m_Gui.m_IsPaused;
-		}
-		if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
-		{
-			m_Solver.ToggleWallMovement();
 		}
 
 		// --- Update ---

@@ -5,6 +5,27 @@ class ShaderHelper;
 class SphSolver
 {
 public:
+	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps);
+
+	void Run(ID3D12GraphicsCommandList* cmdList);
+	void OnGui();
+
+	// [Getters]
+	UINT GetNumParticles() const { return m_NumParticles; }
+	UINT GetNumDiffuseParticles() const { return m_DiffuseParams.MaxDiffuseParticles; }
+	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
+	ID3D12DescriptorHeap* GetGlobalHeap() const { return m_GlobalHeap.Get(); }
+	ID3D12Resource* GetDrawArgsBuffer() const { return m_DrawArgsBuffer.Get(); }
+	ID3D12CommandSignature* GetDrawCommandSignature() const { return m_DrawSig.Get(); }
+	UINT GetPositionSrvIndex() const { return SRV_IDX_POS_PRED; }
+	UINT GetDensitySrvIndex() const { return SRV_IDX_DENSITY_RENDER; }
+	UINT GetDiffuseSrvIndex() const { return SRV_IDX_DIFFUSE_PARTICLES_RENDER; }
+	UINT GetDescriptorSize() const { return m_CbvSrvUavDescriptorSize; }
+	ID3D12Resource* GetDiffuseParticleResource() const { return m_DiffuseParticles.Get(); }
+
+	bool m_bSolveDiffuseParticles = true;
+	float m_FixedDt = 1.0f / 60.0f;
+private:
 	struct SimParams
 	{
 		UINT NumParticles;
@@ -32,42 +53,15 @@ public:
 		float JitterFactor = 0.005f;
 	} m_SimParams;
 
-	bool m_bSolveDiffuseParticles = true;
-
-public:
-	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps);
-
-	void UpdateInputs();
-	void Run(ID3D12GraphicsCommandList* cmdList);
-	void OnGui();
-	void ResetSimulation(ID3D12GraphicsCommandList* cmdList);
-
-	// [Getters]
-	UINT GetNumParticles() const { return m_NumParticles; }
-	UINT GetNumDiffuseParticles() const { return m_DiffuseParams.MaxDiffuseParticles; }
-	const SimParams& GetSimParams() const { return m_SimParams; }
-	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
-	ID3D12DescriptorHeap* GetGlobalHeap() const { return m_GlobalHeap.Get(); }
-	ID3D12Resource* GetDrawArgsBuffer() const { return m_DrawArgsBuffer.Get(); }
-	ID3D12CommandSignature* GetDrawCommandSignature() const { return m_DrawSig.Get(); }
-	UINT GetPositionSrvIndex() const { return SRV_IDX_POS_PRED; }
-	UINT GetDensitySrvIndex() const { return SRV_IDX_DENSITY_RENDER; }
-	UINT GetDiffuseSrvIndex() const { return SRV_IDX_DIFFUSE_PARTICLES_RENDER; }
-	UINT GetDescriptorSize() const { return m_CbvSrvUavDescriptorSize; }
-	ID3D12Resource* GetDiffuseParticleResource() const { return m_DiffuseParticles.Get(); }
-
-	void ToggleWallMovement() { m_bWallMove = !m_bWallMove; }
-
-	float m_FixedDt = 1.0f / 60.0f;
-private:
 	int m_Substeps = 1;
 	int m_Iterations = 2;
+	float m_Spacing = 0.10f;
+
 	bool m_bWallMove = false;
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
 	float m_WallSpeed = 2.0f;
 	float m_WallAmplitude = 3.0f;
-	float m_Spacing = 0.10f;
 
 	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
@@ -227,7 +221,7 @@ private:
 		float MaxLifeTime = 4.0f;
 		float CellSizeScale = 1.0f;
 
-		float BubbleScale = 4.0f;
+		float BubbleScale = 8.0f;
 		float BubbleScaleChangeSpeed = 10.0f;
 		int SprayClassifyMaxNeighbours = 2;
 		int BubbleClassifyMinNeighbours = 8;
@@ -298,6 +292,9 @@ private:
 	ComPtr<ID3D12PipelineState> m_BuildDrawArgsPSO;
 
 	ID3D12Device* m_pDevice = nullptr;
+
+	void UpdateInputs();
+	void ResetSimulation(ID3D12GraphicsCommandList* cmdList);
 
 	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
 	void PermuteAndCopyBack(ID3D12GraphicsCommandList* cmdList);
