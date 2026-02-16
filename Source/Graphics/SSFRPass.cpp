@@ -2,6 +2,7 @@
 #include "GraphicsCore.h"
 #include "Vertex.h"
 #include "SphSolver.h" 
+#include "DescriptorHeapManager.h"
 
 #include "SSFRPass.h"
 
@@ -34,6 +35,8 @@ void SSFRPass::Render(const RenderContext& ctx)
 
 		if (ctx.Solver->m_bSolveDiffuseParticles)
 			RenderDiffuse(ctx);
+
+		ToneMapping(ctx);
 	}
 }
 
@@ -50,7 +53,6 @@ void SSFRPass::RenderDepthOnly(const RenderContext& ctx)
 	cmdList->ResourceBarrier(1, &b0);
 
 	cmdList->ClearDepthStencilView(ctx.ShadowDSVHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
 	cmdList->OMSetRenderTargets(0, nullptr, FALSE, &ctx.ShadowDSVHandle);
 
 	UINT res = ctx.res;
@@ -59,21 +61,15 @@ void SSFRPass::RenderDepthOnly(const RenderContext& ctx)
 	cmdList->RSSetViewports(1, &viewport);
 	cmdList->RSSetScissorRects(1, &scissorRect);
 
-	cmdList->SetGraphicsRootSignature(m_ShadowRootSig.Get());
-	cmdList->SetPipelineState(m_ShadowPSO.Get());
-
 	m_LightParams.LightView = ctx.LightView;
 	m_LightParams.LightProj = ctx.LightProj;
 	m_LightParams.VisualRadius = ctx.Globals.VisualRadius;
 
+	cmdList->SetGraphicsRootSignature(m_ShadowRootSig.Get());
+	cmdList->SetPipelineState(m_ShadowPSO.Get());
+
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(LightParams) / 4, &m_LightParams, 0);
-
-	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
-	ID3D12DescriptorHeap* heaps[] = { globalHeap };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
-	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_PosSrvGpu);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -123,6 +119,12 @@ void SSFRPass::OnGui(RenderContext& ctx)
 		ImGui::DragFloat("BaseAlpha", &m_DiffuseParams.BaseAlpha, 0.001f, 0.0f, 1.0f, "%.3f");
 		ImGui::DragFloat("Turbidity", &m_DiffuseParams.Turbidity, 0.1f, 0.0f, 20.0f, "%.1f");
 	}
+
+	if (ImGui::CollapsingHeader("ToneMaaping", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::DragFloat("Gamma", &m_ToneMappingParams.Gamma, 0.1f, 0.0f, 10.0f, "%.1f");
+		ImGui::DragFloat("Exposure", &m_ToneMappingParams.Exposure, 0.1f, 0.0f, 10.0f, "%.1f");
+	}
 }
 
 // =========================================================
@@ -134,28 +136,20 @@ void SSFRPass::RenderParticles(const RenderContext& ctx)
 	auto cmdList = ctx.CmdList;
 	auto solver = ctx.Solver;
 
+	cmdList->RSSetViewports(1, &ctx.Viewport);
+	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
+
 	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
 	cmdList->ClearRenderTargetView(ctx.CurrentRTV, clearColor, 0, nullptr);
 	cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
 	cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
 
-	cmdList->RSSetViewports(1, &ctx.Viewport);
-	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
-
 	cmdList->SetGraphicsRootSignature(m_RenderParticleRootSig.Get());
 	cmdList->SetPipelineState(m_RenderParticlePSO.Get());
 
-	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
-	ID3D12DescriptorHeap* heaps[] = { globalHeap };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
-	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE densityHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetDensitySrvIndex(), solver->GetDescriptorSize());
-	cmdList->SetGraphicsRootDescriptorTable(2, densityHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_PosSrvGpu);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -180,7 +174,6 @@ void SSFRPass::RenderFluidDepth(const RenderContext& ctx)
 	// Clear & Set RT
 	const float clearColor[] = { 1e9f, 0.0f, 0.0f, 0.0f };
 	cmdList->ClearRenderTargetView(m_FluidDepthRtvHandle, clearColor, 0, nullptr);
-
 	cmdList->OMSetRenderTargets(1, &m_FluidDepthRtvHandle, FALSE, &ctx.CurrentDSV);
 
 	// Viewport & Scissor
@@ -191,14 +184,9 @@ void SSFRPass::RenderFluidDepth(const RenderContext& ctx)
 	cmdList->SetGraphicsRootSignature(m_FluidDepthRootSig.Get());
 	cmdList->SetPipelineState(m_FluidDepthPSO.Get());
 
-	// Bind Solver Resources (Particles)
-	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
-	ID3D12DescriptorHeap* heaps[] = { globalHeap };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
-	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_PosSrvGpu);
+
 	// Draw Quad Instances
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -215,26 +203,22 @@ void SSFRPass::RenderFluidSmooth(const RenderContext& ctx)
 	cmdList->SetPipelineState(m_FluidSmoothPSO.Get());
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// Bind Fluid SRV Heap
-	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	// [Pass 1] Horizontal: Depth(RTV->SRV) -> Temp(SRV->RTV)
-	D3D12_RESOURCE_BARRIER barriers1[] = {
-		CD3DX12_RESOURCE_BARRIER::Transition(m_FluidDepthTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-		CD3DX12_RESOURCE_BARRIER::Transition(m_BlurTempTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET)
-	};
-	cmdList->ResourceBarrier(2, barriers1);
+	{
+		D3D12_RESOURCE_BARRIER barriers1[] = {
+			CD3DX12_RESOURCE_BARRIER::Transition(m_FluidDepthTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+			CD3DX12_RESOURCE_BARRIER::Transition(m_BlurTempTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET)
+		};
+		cmdList->ResourceBarrier(2, barriers1);
 
-	cmdList->OMSetRenderTargets(1, &m_BlurTempRtvHandle, FALSE, nullptr);
+		cmdList->OMSetRenderTargets(1, &m_BlurTempRtvHandle, FALSE, nullptr);
 
-	// Input: Depth (Index 0)
-	auto gpuHandleDepth = m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart();
-	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleDepth);
-
-	m_BlurParams.DirX = 1.0f; m_BlurParams.DirY = 0.0f;
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
-	cmdList->DrawInstanced(3, 1, 0, 0);
+		// Input: Depth (Index 0)
+		cmdList->SetGraphicsRootDescriptorTable(1, m_FluidDepthSrvHandleGpu);
+		m_BlurParams.DirX = 1.0f; m_BlurParams.DirY = 0.0f;
+		cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
+		cmdList->DrawInstanced(3, 1, 0, 0);
+	}
 
 	// [Pass 2] Vertical: Temp(RTV->SRV) -> Depth(SRV->RTV)
 	D3D12_RESOURCE_BARRIER barriers2[] = {
@@ -243,22 +227,21 @@ void SSFRPass::RenderFluidSmooth(const RenderContext& ctx)
 	};
 	cmdList->ResourceBarrier(2, barriers2);
 
-	cmdList->OMSetRenderTargets(1, &m_FluidDepthRtvHandle, FALSE, nullptr);
+	{
+		cmdList->OMSetRenderTargets(1, &m_FluidDepthRtvHandle, FALSE, nullptr);
 
-	// Input: Temp (Index 1)
-	UINT srvSize = ctx.Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandleTemp(m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart(), 1, srvSize);
-	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleTemp);
+		// Input: Temp (Index 1)
+		cmdList->SetGraphicsRootDescriptorTable(1, m_BlurTempSrvHandleGpu);
+		m_BlurParams.DirX = 0.0f; m_BlurParams.DirY = 1.0f;
+		cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
+		cmdList->DrawInstanced(3, 1, 0, 0);
 
-	m_BlurParams.DirX = 0.0f; m_BlurParams.DirY = 1.0f;
-	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(BlurParams) / 4, &m_BlurParams, 0);
-	cmdList->DrawInstanced(3, 1, 0, 0);
-
-	// Cleanup: Depth(RTV->SRV)
-	D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
-		m_FluidDepthTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
-	);
-	cmdList->ResourceBarrier(1, &barrierEnd);
+		// Cleanup: Depth(RTV->SRV)
+		D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
+			m_FluidDepthTexture.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+		);
+		cmdList->ResourceBarrier(1, &barrierEnd);
+	}
 }
 
 void SSFRPass::RenderFluidThickness(const RenderContext& ctx)
@@ -279,8 +262,7 @@ void SSFRPass::RenderFluidThickness(const RenderContext& ctx)
 	cmdList->ClearRenderTargetView(m_FluidThicknessRtvHandle, clearColor, 0, nullptr);
 
 	// Use Depth Buffer for occlusion (ReadOnly would be better, but sharing DSV)
-	auto dsvHandle = ctx.SceneDSV;
-	cmdList->OMSetRenderTargets(1, &m_FluidThicknessRtvHandle, FALSE, &dsvHandle);
+	cmdList->OMSetRenderTargets(1, &m_FluidThicknessRtvHandle, FALSE, &ctx.SceneDSVHandle);
 
 	cmdList->RSSetViewports(1, &ctx.Viewport);
 	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
@@ -288,14 +270,8 @@ void SSFRPass::RenderFluidThickness(const RenderContext& ctx)
 	cmdList->SetGraphicsRootSignature(m_FluidDepthRootSig.Get()); // Reusing Depth RootSig
 	cmdList->SetPipelineState(m_FluidThicknessPSO.Get());
 
-	// Bind Solver Resources
-	ID3D12DescriptorHeap* globalHeap = solver->GetGlobalHeap();
-	ID3D12DescriptorHeap* heaps[] = { globalHeap };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(RenderContext::GlobalConstants) / 4, &ctx.Globals, 0);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE posHandle(globalHeap->GetGPUDescriptorHandleForHeapStart(), solver->GetPositionSrvIndex(), solver->GetDescriptorSize());
-	cmdList->SetGraphicsRootDescriptorTable(1, posHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_PosSrvGpu);
 
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
 	cmdList->IASetIndexBuffer(&m_QuadIBView);
@@ -318,50 +294,30 @@ void SSFRPass::RenderFluidComposite(const RenderContext& ctx)
 	auto device = ctx.Device;
 
 	D3D12_RESOURCE_BARRIER barrierStart = CD3DX12_RESOURCE_BARRIER::Transition(
-		ctx.SceneColorTex,
+		ctx.SceneColorTex.Get(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);
 	cmdList->ResourceBarrier(1, &barrierStart);
 
-	// Current Frame Index, Offset, CopyDestIndex
-	UINT frameIndex = ctx.FrameIndex;
-	UINT baseOffset = 3 + (frameIndex * 4);
-	UINT destIndex = baseOffset;
-
-	UINT srvSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), destIndex, srvSize);
-
-	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneColorSRVHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	destHandle.Offset(1, srvSize);
-	device->CopyDescriptorsSimple(1, destHandle, ctx.SceneDepthSRVHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
 	cmdList->SetGraphicsRootSignature(m_FluidCompositeRootSig.Get());
 	cmdList->SetPipelineState(m_FluidCompositePSO.Get());
 
-	// Bind Fluid Heap (Depth, Thickness)
-	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(CompositeParams) / 4, &m_CompositeParams, 0);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_FluidDepthSrvHandleGpu);
+	cmdList->SetGraphicsRootDescriptorTable(2, ctx.SceneColorSRVHandleGpu);
+	cmdList->SetGraphicsRootDescriptorTable(3, ctx.SkyboxSRVHandleGpu);
 
-	auto gpuHandleStart = m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart();
-	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandleStart);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandleScene(gpuHandleStart, destIndex, srvSize);
-	cmdList->SetGraphicsRootDescriptorTable(2, gpuHandleScene);
-
-	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 0.0f };
-	cmdList->ClearRenderTargetView(ctx.CurrentRTV, clearColor, 0, nullptr);
+	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	cmdList->ClearRenderTargetView(ctx.HdrRTVHandle, clearColor, 0, nullptr);
 	cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-	cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
+	cmdList->OMSetRenderTargets(1, &ctx.HdrRTVHandle, FALSE, &ctx.CurrentDSV);
 
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->DrawInstanced(3, 1, 0, 0);
 
 	D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
-		ctx.SceneColorTex,
+		ctx.SceneColorTex.Get(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	);
@@ -375,56 +331,17 @@ void SSFRPass::RenderDiffuse(const RenderContext& ctx)
 	auto device = ctx.Device;
 
 	D3D12_RESOURCE_BARRIER transitionBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		solver->GetDiffuseParticleResource(),
+		solver->GetDiffuseParticleBuffer(),
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);
 	cmdList->ResourceBarrier(1, &transitionBarrier);
 
-	ID3D12DescriptorHeap* heaps[] = { m_FluidSrvHeap.Get() };
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	UINT srvSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	UINT baseOffset = 3 + (ctx.FrameIndex * 4);
-	UINT diffuseOffset = baseOffset + 2;
-
-	CD3DX12_CPU_DESCRIPTOR_HANDLE handleT0(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), diffuseOffset, srvSize);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE handleT1(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart(), diffuseOffset + 1, srvSize);
-
-	struct DiffuseParticle
-	{
-		SM::Vector4 PositionLife;
-		SM::Vector4 VelocityScale;
-	};
-	// Create Diffuse Particle Buffer View
-	D3D12_SHADER_RESOURCE_VIEW_DESC particleSrvDesc = {};
-	particleSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
-	particleSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-	particleSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	particleSrvDesc.Buffer.FirstElement = 0;
-	particleSrvDesc.Buffer.NumElements = solver->GetNumDiffuseParticles();
-	particleSrvDesc.Buffer.StructureByteStride = sizeof(DiffuseParticle); // 구조체 정의 필요
-	particleSrvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-	device->CreateShaderResourceView(solver->GetDiffuseParticleResource(), &particleSrvDesc, handleT0);
-
-	// Create Fluid Depth Texture
-	D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
-	depthSrvDesc.Format = DXGI_FORMAT_R32_FLOAT;
-	depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	depthSrvDesc.Texture2D.MipLevels = 1;
-
-	device->CreateShaderResourceView(m_FluidDepthTexture.Get(), &depthSrvDesc, handleT1);
-
 	cmdList->SetGraphicsRootSignature(m_DiffuseRootSig.Get());
 	cmdList->SetPipelineState(m_DiffusePSO.Get());
 
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(DiffuseParams) / 4, &m_DiffuseParams, 0);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_FluidSrvHeap->GetGPUDescriptorHandleForHeapStart(), diffuseOffset, srvSize);
-	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, m_FluidDepthSrvHandleGpu);
 
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->ExecuteIndirect(
@@ -436,18 +353,53 @@ void SSFRPass::RenderDiffuse(const RenderContext& ctx)
 	);
 
 	D3D12_RESOURCE_BARRIER restoreBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-		solver->GetDiffuseParticleResource(),
+		solver->GetDiffuseParticleBuffer(),
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
 		D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
 	);
 	cmdList->ResourceBarrier(1, &restoreBarrier);
 }
 
+void SSFRPass::ToneMapping(const RenderContext& ctx)
+{
+	auto cmdList = ctx.CmdList;
+	auto solver = ctx.Solver;
+	auto device = ctx.Device;
+
+	D3D12_RESOURCE_BARRIER transSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+		ctx.HdrTex.Get(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+	);
+	cmdList->ResourceBarrier(1, &transSRV);
+
+	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	cmdList->ClearRenderTargetView(ctx.CurrentRTV, clearColor, 0, nullptr);
+	cmdList->ClearDepthStencilView(ctx.CurrentDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	cmdList->OMSetRenderTargets(1, &ctx.CurrentRTV, FALSE, &ctx.CurrentDSV);
+
+	cmdList->SetGraphicsRootSignature(m_ToneMappingRootSig.Get());
+	cmdList->SetPipelineState(m_ToneMappingPSO.Get());
+
+	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(ToneMappingParams) / 4, &m_ToneMappingParams, 0);
+	cmdList->SetGraphicsRootDescriptorTable(1, ctx.HdrSRVHandleGpu);
+
+	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	cmdList->DrawInstanced(3, 1, 0, 0);
+
+	D3D12_RESOURCE_BARRIER transRTV = CD3DX12_RESOURCE_BARRIER::Transition(
+		ctx.HdrTex.Get(),
+		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+		D3D12_RESOURCE_STATE_RENDER_TARGET
+	);
+	cmdList->ResourceBarrier(1, &transRTV);
+}
+
 // =========================================================
 // Initialization Functions
 // =========================================================
 
-void SSFRPass::CreateShaders(const RenderInitContext& ctx)
+void SSFRPass::CreateShaders(RenderContext& ctx)
 {
 	auto helper = ctx.ShaderHelper;
 
@@ -464,9 +416,11 @@ void SSFRPass::CreateShaders(const RenderInitContext& ctx)
 
 	m_DiffuseVS = helper->Compile(m_ShaderBaseName, L"DiffuseVS.hlsl", L"main", L"vs_6_0");
 	m_DiffusePS = helper->Compile(m_ShaderBaseName, L"DiffusePS.hlsl", L"main", L"ps_6_0");
+
+	m_ToneMappingPS = helper->Compile(m_ShaderBaseName, L"ToneMappingPS.hlsl", L"main", L"ps_6_0");
 }
 
-void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
+void SSFRPass::CreateRootSignatures(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 
@@ -477,16 +431,12 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 
 	// Particle / Depth / Thickness (Shared)
 	{
-		CD3DX12_ROOT_PARAMETER1 params[3];
+		CD3DX12_ROOT_PARAMETER1 params[2];
 		params[0].InitAsConstants(sizeof(RenderContext::GlobalConstants) / 4.0, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
 
-		CD3DX12_DESCRIPTOR_RANGE1 srvRangePos;
-		srvRangePos.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-		params[1].InitAsDescriptorTable(1, &srvRangePos, D3D12_SHADER_VISIBILITY_VERTEX);
-
-		CD3DX12_DESCRIPTOR_RANGE1 srvRangeDen;
-		srvRangeDen.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
-		params[2].InitAsDescriptorTable(1, &srvRangeDen, D3D12_SHADER_VISIBILITY_VERTEX);
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
 		desc.Init_1_1(_countof(params), params, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -497,11 +447,11 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 
 	// Smooth
 	{
-		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-
 		CD3DX12_ROOT_PARAMETER1 params[2];
 		params[0].InitAsConstants(sizeof(BlurParams) / 4, 0);
+
+		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		D3D12_STATIC_SAMPLER_DESC sampler = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -514,16 +464,21 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 
 	// Composite
 	{
-		CD3DX12_DESCRIPTOR_RANGE1 fluidRange;
-		fluidRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
-
-		CD3DX12_DESCRIPTOR_RANGE1 sceneRange;
-		sceneRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 3);
-
-		CD3DX12_ROOT_PARAMETER1 params[3];
+		CD3DX12_ROOT_PARAMETER1 params[4];
 		params[0].InitAsConstants(sizeof(CompositeParams) / 4, 0);
-		params[1].InitAsDescriptorTable(1, &fluidRange, D3D12_SHADER_VISIBILITY_PIXEL);
-		params[2].InitAsDescriptorTable(1, &sceneRange, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		CD3DX12_DESCRIPTOR_RANGE1 fluidSrvRange;
+		fluidSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 3, 0);
+
+		CD3DX12_DESCRIPTOR_RANGE1 sceneSrvRange;
+		sceneSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 3);
+
+		CD3DX12_DESCRIPTOR_RANGE1 skyboxSrvRange;
+		skyboxSrvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 5);
+
+		params[1].InitAsDescriptorTable(1, &fluidSrvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+		params[2].InitAsDescriptorTable(1, &sceneSrvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+		params[3].InitAsDescriptorTable(1, &skyboxSrvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
 		D3D12_STATIC_SAMPLER_DESC samplers[2];
 		samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -541,7 +496,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 		params[0].InitAsConstants(sizeof(LightParams) / 4, 0);
 
 		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
-		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE);
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_VERTEX);
 
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
@@ -557,7 +512,7 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 
 		CD3DX12_DESCRIPTOR_RANGE1 srvRange;
 
-		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
+		srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE);
 
 		params[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_ALL);
 
@@ -566,9 +521,27 @@ void SSFRPass::CreateRootSignatures(const RenderInitContext& ctx)
 
 		Helpers::CreateRootSignature(ctx.Device, desc, D3D_ROOT_SIGNATURE_VERSION_1_1, m_DiffuseRootSig, "m_DiffuseRootSig");
 	}
+
+	// ToneMaaping
+	{
+		CD3DX12_ROOT_PARAMETER1 params[2];
+		params[0].InitAsConstants(sizeof(ToneMappingParams) / 4, 0);
+
+		CD3DX12_DESCRIPTOR_RANGE1 range;
+		range.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0);
+		params[1].InitAsDescriptorTable(1, &range, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		D3D12_STATIC_SAMPLER_DESC samplers[1];
+		samplers[0] = CD3DX12_STATIC_SAMPLER_DESC(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
+
+		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
+		desc.Init_1_1(_countof(params), params, __crt_countof(samplers), samplers, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		Helpers::CreateRootSignature(device, desc, featureData.HighestVersion, m_ToneMappingRootSig, "m_ToneMappingRootSig");
+	}
 }
 
-void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
+void SSFRPass::CreatePSOs(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 
@@ -693,7 +666,7 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 		psoDesc.DepthStencilState.DepthEnable = FALSE;
 		psoDesc.NumRenderTargets = 1;
-		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 		psoDesc.SampleMask = UINT_MAX;
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -753,7 +726,7 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
 
 		psoDesc.NumRenderTargets = 1;
-		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
 		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
 		psoDesc.SampleMask = UINT_MAX;
 		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
@@ -761,9 +734,31 @@ void SSFRPass::CreatePSOs(const RenderInitContext& ctx)
 
 		ThrowIfFailed(ctx.Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_DiffusePSO)));
 	}
+
+	// ToneMappingRootSig
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+		psoDesc.pRootSignature = m_ToneMappingRootSig.Get();
+
+		auto FullScreenQuadVS = ctx.ShaderHelper->GetFullScreenQuadVS();
+		psoDesc.VS = CD3DX12_SHADER_BYTECODE(FullScreenQuadVS->GetBufferPointer(), FullScreenQuadVS->GetBufferSize());
+		psoDesc.PS = CD3DX12_SHADER_BYTECODE(m_ToneMappingPS->GetBufferPointer(), m_ToneMappingPS->GetBufferSize());
+
+		psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		psoDesc.DepthStencilState.DepthEnable = FALSE;
+		psoDesc.NumRenderTargets = 1;
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+		psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+		psoDesc.SampleMask = UINT_MAX;
+		psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		psoDesc.SampleDesc.Count = 1;
+
+		ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_ToneMappingPSO)));
+	}
 }
 
-void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
+void SSFRPass::CreateResources(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
 	auto device = ctx.Device;
 	auto cmdList = ctx.CmdList;
@@ -779,8 +774,8 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 
 		uint16_t quadIndices[] = { 0, 1, 2, 1, 3, 2 };
 
-		const UINT vbByteSize = sizeof(quadVertices);
-		const UINT ibByteSize = sizeof(quadIndices);
+		UINT vbByteSize = sizeof(quadVertices);
+		UINT ibByteSize = sizeof(quadIndices);
 
 		m_QuadVB = Helpers::CreateDefaultBuffer(device, cmdList, quadVertices, vbByteSize, uploadHeaps);
 		m_QuadIB = Helpers::CreateDefaultBuffer(device, cmdList, quadIndices, ibByteSize, uploadHeaps);
@@ -798,21 +793,6 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 	{
 		m_BlurParams.InvScreenSize = { 1.0f / ctx.Width, 1.0f / ctx.Height };
 		m_CompositeParams.InvScreenSize = { 1.0f / ctx.Width, 1.0f / ctx.Height };
-	}
-
-	// Create Heaps
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC rtvDesc = {};
-		rtvDesc.NumDescriptors = 3; // Depth, BlurTemp, Thickness
-		rtvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		rtvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&rtvDesc, IID_PPV_ARGS(&m_FluidRtvHeap)));
-
-		D3D12_DESCRIPTOR_HEAP_DESC srvDesc = {};
-		srvDesc.NumDescriptors = 3 + (4 * GraphicsCore::FrameCount);
-		srvDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		srvDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&srvDesc, IID_PPV_ARGS(&m_FluidSrvHeap)));
 	}
 
 	// Create Textures (Depth, Blur, Thickness)
@@ -836,20 +816,13 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 	ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValDepth, IID_PPV_ARGS(&m_BlurTempTexture)));
 	ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &clearValZero, IID_PPV_ARGS(&m_FluidThicknessTexture)));
 
-	// Create Views (RTV, SRV)
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_FluidRtvHeap->GetCPUDescriptorHandleForHeapStart());
-	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_FluidSrvHeap->GetCPUDescriptorHandleForHeapStart());
-	UINT rtvInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-	UINT srvInc = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
 	// Helper Lambda
-	auto CreateViews = [&](ID3D12Resource* tex, CD3DX12_CPU_DESCRIPTOR_HANDLE& rtvOut, CD3DX12_CPU_DESCRIPTOR_HANDLE& srvOut) {
+	auto CreateViews = [&](ID3D12Resource* tex, 
+		CD3DX12_CPU_DESCRIPTOR_HANDLE& rtvHandle, CD3DX12_CPU_DESCRIPTOR_HANDLE& srvHandle) {
 		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
 		rtvDesc.Format = DXGI_FORMAT_R32_FLOAT;
 		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
 		device->CreateRenderTargetView(tex, &rtvDesc, rtvHandle);
-		rtvOut = rtvHandle;
-		rtvHandle.Offset(1, rtvInc);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -857,11 +830,45 @@ void SSFRPass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = 1;
 		device->CreateShaderResourceView(tex, &srvDesc, srvHandle);
-		srvOut = srvHandle;
-		srvHandle.Offset(1, srvInc);
 		};
 
-	CreateViews(m_FluidDepthTexture.Get(), m_FluidDepthRtvHandle, m_FluidDepthSrvHandle);
-	CreateViews(m_BlurTempTexture.Get(), m_BlurTempRtvHandle, m_BlurTempSrvHandle);
-	CreateViews(m_FluidThicknessTexture.Get(), m_FluidThicknessRtvHandle, m_FluidThicknessSrvHandle);
+	m_FluidDepthRtvHandle = ctx.HeapManager->AllocRTV();
+	m_BlurTempRtvHandle = ctx.HeapManager->AllocRTV();
+	m_FluidThicknessRtvHandle = ctx.HeapManager->AllocRTV();
+
+	m_FluidDepthSrvHandleCpu = ctx.HeapManager->AllocSRV(&m_FluidDepthSrvHandleGpu);
+	m_BlurTempSrvHandleCpu = ctx.HeapManager->AllocSRV(&m_BlurTempSrvHandleGpu);
+	m_FluidThicknessSrvHandleCpu = ctx.HeapManager->AllocSRV(&m_FluidThicknessSrvHandleGpu);
+
+	CreateViews(m_FluidDepthTexture.Get(), m_FluidDepthRtvHandle, m_FluidDepthSrvHandleCpu);
+	CreateViews(m_BlurTempTexture.Get(), m_BlurTempRtvHandle, m_BlurTempSrvHandleCpu);
+	CreateViews(m_FluidThicknessTexture.Get(), m_FluidThicknessRtvHandle, m_FluidThicknessSrvHandleCpu);
+
+	auto CreateSRV = [&](ID3D12Resource* buffer, UINT num, UINT stride, D3D12_CPU_DESCRIPTOR_HANDLE handle) {
+		D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
+		desc.Format = DXGI_FORMAT_UNKNOWN;
+		desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		desc.Buffer.FirstElement = 0;
+		desc.Buffer.NumElements = num;
+		desc.Buffer.StructureByteStride = stride,
+		desc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+
+		device->CreateShaderResourceView(buffer, &desc, handle);
+		};
+
+	// Create Diffuse Particle Buffer View
+	struct DiffuseParticle
+	{
+		SM::Vector4 PositionLife;
+		SM::Vector4 VelocityScale;
+	};
+	m_DiffuseBufferSrvCpu = ctx.HeapManager->AllocSRV(&m_DiffuseBufferSrvGpu);
+	CreateSRV(ctx.Solver->GetDiffuseParticleBuffer(), ctx.Solver->GetNumDiffuseParticles(), sizeof(DiffuseParticle), m_DiffuseBufferSrvCpu);
+
+	m_PosSrvCpu = ctx.HeapManager->AllocSRV(&m_PosSrvGpu);
+	CreateSRV(ctx.Solver->GetParticleBuffer(), ctx.Solver->GetNumParticles(), sizeof(SM::Vector3), m_PosSrvCpu);
+
+	m_DensitySrvCpu = ctx.HeapManager->AllocSRV(&m_DensitySrvGpu);
+	CreateSRV(ctx.Solver->GetDensityBuffer(), ctx.Solver->GetNumParticles(), sizeof(float), m_DensitySrvCpu);
 }

@@ -190,16 +190,19 @@ void FluidSimApp::Initialize(HINSTANCE hInstance)
 	m_ShaderHelper.Initialize();
 	m_Camera.Initialize(m_AspectRatio);
 
+	auto device = m_GraphicsCore.GetDevice();
+	m_HeapManager.Initialize(device);
+
 	ID3D12GraphicsCommandList* cmdList = m_GraphicsCore.GetCommandList();
 	cmdList->Reset(m_GraphicsCore.GetCommandAllocator(), nullptr);
 
 	std::vector<ComPtr<ID3D12Resource>> uploadHeaps;
-	m_Solver.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, uploadHeaps);
+	m_Solver.Initialize(device, cmdList, &m_ShaderHelper, uploadHeaps);
 
-	m_RendererManager.Initialize(m_GraphicsCore.GetDevice(), cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore, &m_Solver, uploadHeaps);
+	m_RendererManager.Initialize(device, cmdList, &m_ShaderHelper, m_Width, m_Height, &m_GraphicsCore, &m_Solver, uploadHeaps, &m_HeapManager);
 
 	m_Gui.Initialize(
-		m_GraphicsCore.GetDevice(),
+		device,
 		hWnd,
 		GraphicsCore::FrameCount,
 		m_GraphicsCore.GetCommandQueue(),

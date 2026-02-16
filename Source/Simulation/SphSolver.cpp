@@ -326,6 +326,8 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 	CreateDiffuseRootSignature(device);
 	CreateCommandSignature(device);
 
+	std::wstring version62 = L"cs_6_2";
+
 	CreateComputePSO(device, shaderHelper, L"IntegrationCS.hlsl", m_IntegrationPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"BitonicSortLdsCS.hlsl", m_BitonicSortLdsPSO, m_GlobalRootSig);
 	CreateComputePSO(device, shaderHelper, L"BitonicSortCS.hlsl", m_BitonicSortPSO, m_GlobalRootSig);
@@ -784,9 +786,9 @@ void SphSolver::CreateCommandSignature(ID3D12Device* device)
 }
 
 void SphSolver::CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
-	std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig)
+	std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig, std::wstring version)
 {
-	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, shaderFile, L"main", L"cs_6_0");
+	ComPtr<IDxcBlob> csBlob = helper->Compile(m_ShaderBaseName, shaderFile, L"main", version);
 
 	D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.pRootSignature = sig.Get();

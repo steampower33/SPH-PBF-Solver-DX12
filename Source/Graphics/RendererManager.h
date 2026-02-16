@@ -5,6 +5,8 @@
 #include "RenderContext.h"
 #include "IRenderPass.h"
 
+class DescriptorHeapManager;
+
 class RendererManager
 {
 public:
@@ -17,39 +19,16 @@ public:
 
 	void Render(ID3D12GraphicsCommandList* cmdList);
 
-	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps);
+	void Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps, DescriptorHeapManager* heapManager);
 
 	void OnGui();
 
 private:
-	RenderInitContext m_RenderInitContext{};
 	RenderContext m_RenderContext{};
 
 	std::vector<std::unique_ptr<IRenderPass>> m_RenderPasses;
 
-	// Scene
-	ComPtr<ID3D12Resource> m_SceneColorTex;
-	ComPtr<ID3D12Resource> m_SceneDepthTex;
-
-	ComPtr<ID3D12DescriptorHeap> m_SceneRTVHeap;
-	ComPtr<ID3D12DescriptorHeap> m_SceneSRVHeap;
-	ComPtr<ID3D12DescriptorHeap> m_SceneDSVHeap;
-
-	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneColorRTVHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneColorSRVHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDepthSRVHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE m_SceneDSVHandle;
-
-	// Shadow
-	ComPtr<ID3D12Resource> m_ShadowMapTex;
-
-	ComPtr<ID3D12DescriptorHeap> m_ShadowDSVHeap;
-	ComPtr<ID3D12DescriptorHeap> m_ShadowSRVHeap;
-
-	D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowDSVHandle;
-	D3D12_CPU_DESCRIPTOR_HANDLE m_ShadowSRVHandle;
-
-	void CreateShadowResources(const RenderInitContext& ctx);
-	
-	void CreateSceneResources(const RenderInitContext& ctx);
+	void CreateShadowResources(RenderContext& ctx);
+	void CreateSceneResources(RenderContext& ctx);
+	void CreateHdrResources(RenderContext& ctx);
 };

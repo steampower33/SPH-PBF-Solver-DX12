@@ -3,36 +3,46 @@
 class SphSolver;
 class ShaderHelper;
 class GraphicsCore;
-
-struct RenderInitContext
-{
-    ID3D12Device* Device;
-    ID3D12GraphicsCommandList* CmdList;
-    ShaderHelper* ShaderHelper;
-    GraphicsCore* GraphicsCore;
-
-    int Width;
-    int Height;
-};
+class DescriptorHeapManager;
 
 struct RenderContext
 {
     ID3D12Device* Device;
     ID3D12GraphicsCommandList* CmdList;
+    ID3D12CommandQueue* Queue;
+    ShaderHelper* ShaderHelper;
+    GraphicsCore* GraphicsCore;
+    DescriptorHeapManager* HeapManager;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE CurrentRTV;
-    D3D12_CPU_DESCRIPTOR_HANDLE CurrentDSV;
+    int Width;
+    int Height;
 
-    ID3D12Resource* SceneColorTex = nullptr;
-    ID3D12Resource* SceneDepthTex = nullptr;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CurrentRTV;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE CurrentDSV;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneRTV;
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneDSV;
     D3D12_VIEWPORT Viewport;
     D3D12_RECT ScissorRect;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneColorSRVHandle;
-    D3D12_CPU_DESCRIPTOR_HANDLE SceneDepthSRVHandle;
+    ComPtr<ID3D12Resource> SceneColorTex;
+    ComPtr<ID3D12Resource> SceneDepthTex;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE SceneRTVHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE SceneDSVHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE SceneColorSRVHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE SceneColorSRVHandleGpu;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE SceneDepthSRVHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE SceneDepthSRVHandleGpu;
+
+    ComPtr<ID3D12Resource> ShadowMapTex;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE ShadowDSVHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE ShadowSRVHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE ShadowSRVHandleGpu;
+
+    ComPtr<ID3D12Resource> HdrTex;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE HdrRTVHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE HdrSRVHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE HdrSRVHandleGpu;
+
+    D3D12_GPU_DESCRIPTOR_HANDLE SkyboxSRVHandleGpu;
 
     struct GlobalConstants {
         SM::Matrix View;
@@ -48,18 +58,13 @@ struct RenderContext
     SM::Vector3 CamPos;
 
     UINT res = 2048;
-    SM::Vector3 LightPos = SM::Vector3(10.0f, 30.0f, -5.0f);
+    SM::Vector3 LightPos = SM::Vector3(-40.0f, 80.0f, -20.0f);
     SM::Vector3 TargetPos = SM::Vector3(0.0f, 0.0f, 0.0f);
     SM::Vector3 LightDir;
     SM::Matrix LightView;
     SM::Matrix LightProj;
     SM::Matrix ShadowTransform;
     float ShadowIntensity = 0.8f;
-
-    ComPtr<ID3D12DescriptorHeap> ShadowSRVHeap;
-
-    D3D12_CPU_DESCRIPTOR_HANDLE ShadowDSVHandle;
-    D3D12_CPU_DESCRIPTOR_HANDLE ShadowSRVHandle;
 
     const SphSolver* Solver = nullptr;
 

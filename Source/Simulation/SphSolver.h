@@ -14,6 +14,7 @@ public:
 	UINT GetNumParticles() const { return m_NumParticles; }
 	UINT GetNumDiffuseParticles() const { return m_DiffuseParams.MaxDiffuseParticles; }
 	ID3D12Resource* GetParticleBuffer() const { return m_PosPred.Get(); }
+	ID3D12Resource* GetDensityBuffer() const { return m_Density.Get(); }
 	ID3D12DescriptorHeap* GetGlobalHeap() const { return m_GlobalHeap.Get(); }
 	ID3D12Resource* GetDrawArgsBuffer() const { return m_DrawArgsBuffer.Get(); }
 	ID3D12CommandSignature* GetDrawCommandSignature() const { return m_DrawSig.Get(); }
@@ -21,7 +22,7 @@ public:
 	UINT GetDensitySrvIndex() const { return SRV_IDX_DENSITY_RENDER; }
 	UINT GetDiffuseSrvIndex() const { return SRV_IDX_DIFFUSE_PARTICLES_RENDER; }
 	UINT GetDescriptorSize() const { return m_CbvSrvUavDescriptorSize; }
-	ID3D12Resource* GetDiffuseParticleResource() const { return m_DiffuseParticles.Get(); }
+	ID3D12Resource* GetDiffuseParticleBuffer() const { return m_DiffuseParticles.Get(); }
 
 	bool m_bSolveDiffuseParticles = true;
 	float m_FixedDt = 1.0f / 60.0f;
@@ -305,7 +306,7 @@ private:
 	void ResetParticlePos();
 	void CreateAllViews(ID3D12Device* device);
 	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
-		std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig);
+		std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig, std::wstring version = L"cs_6_0");
 	void CreateGlobalRootSignature(ID3D12Device* device);
 	void CreatePermuteRootSignature(ID3D12Device* device);
 	void CreateDiffuseRootSignature(ID3D12Device* device);

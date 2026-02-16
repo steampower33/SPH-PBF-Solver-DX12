@@ -43,10 +43,11 @@ private:
     ComPtr<ID3D12RootSignature> m_PlaneRootSig;
     ComPtr<ID3D12PipelineState> m_PlanePSO;
 
-    ComPtr<ID3D12DescriptorHeap> m_PlaneSRVHeap;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE m_PlaneSRVHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE m_PlaneSRVHandleGpu;
 
-    virtual void CreateShaders(const RenderInitContext& ctx) override;
-    virtual void CreateRootSignatures(const RenderInitContext& ctx) override;
-    virtual void CreatePSOs(const RenderInitContext& ctx) override;
-    virtual void CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) override;
+    virtual void CreateShaders(RenderContext& ctx) override;
+    virtual void CreateRootSignatures(RenderContext& ctx) override;
+    virtual void CreatePSOs(RenderContext& ctx) override;
+    virtual void CreateResources(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) override;
 };

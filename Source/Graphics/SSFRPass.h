@@ -54,6 +54,12 @@ private:
         float Turbidity = 1.0f;
     } m_DiffuseParams;
 
+    struct ToneMappingParams {
+        float Gamma = 2.2f;
+        float Exposure = 1.0f;
+        float Pad[2];
+    } m_ToneMappingParams;
+
     std::wstring m_ShaderBaseName = L"./Shaders/Rendering/";
 
     bool m_bDebugDrawParticles = false;
@@ -70,22 +76,35 @@ private:
     ComPtr<IDxcBlob> m_FluidSmoothPS;
     ComPtr<IDxcBlob> m_FluidThicknessPS;
     ComPtr<IDxcBlob> m_FluidCompositePS;
+    ComPtr<IDxcBlob> m_ToneMappingPS;
     ComPtr<IDxcBlob> m_ShadowVS;
     ComPtr<IDxcBlob> m_ShadowPS;
     ComPtr<IDxcBlob> m_DiffuseVS;
     ComPtr<IDxcBlob> m_DiffusePS;
 
-    ComPtr<ID3D12DescriptorHeap> m_FluidRtvHeap;
-    ComPtr<ID3D12DescriptorHeap> m_FluidSrvHeap;
     ComPtr<ID3D12Resource> m_FluidDepthTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidDepthRtvHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidDepthSrvHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidDepthSrvHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE m_FluidDepthSrvHandleGpu;
+
     ComPtr<ID3D12Resource> m_BlurTempTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_BlurTempRtvHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE m_BlurTempSrvHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE m_BlurTempSrvHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE m_BlurTempSrvHandleGpu;
+
     ComPtr<ID3D12Resource> m_FluidThicknessTexture;
     CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidThicknessRtvHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidThicknessSrvHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE m_FluidThicknessSrvHandleCpu;
+    CD3DX12_GPU_DESCRIPTOR_HANDLE m_FluidThicknessSrvHandleGpu;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE m_DiffuseBufferSrvCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_DiffuseBufferSrvGpu;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE m_PosSrvCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_PosSrvGpu;
+
+    D3D12_CPU_DESCRIPTOR_HANDLE m_DensitySrvCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE m_DensitySrvGpu;
 
     ComPtr<ID3D12RootSignature> m_ShadowRootSig;
     ComPtr<ID3D12RootSignature> m_RenderParticleRootSig;
@@ -94,6 +113,7 @@ private:
     ComPtr<ID3D12RootSignature> m_FluidThicknessRootSig;
     ComPtr<ID3D12RootSignature> m_FluidCompositeRootSig;
     ComPtr<ID3D12RootSignature> m_DiffuseRootSig;
+    ComPtr<ID3D12RootSignature> m_ToneMappingRootSig;
 
     ComPtr<ID3D12PipelineState> m_ShadowPSO;
     ComPtr<ID3D12PipelineState> m_RenderParticlePSO;
@@ -102,11 +122,18 @@ private:
     ComPtr<ID3D12PipelineState> m_FluidThicknessPSO;
     ComPtr<ID3D12PipelineState> m_FluidCompositePSO;
     ComPtr<ID3D12PipelineState> m_DiffusePSO;
+    ComPtr<ID3D12PipelineState> m_ToneMappingPSO;
 
-    virtual void CreateShaders(const RenderInitContext& ctx) override;
-    virtual void CreateRootSignatures(const RenderInitContext& ctx)override;
-    virtual void CreatePSOs(const RenderInitContext& ctx) override;
-    virtual void CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) override;
+    struct DiffuseParticle
+    {
+        SM::Vector4 PositionLife;
+        SM::Vector4 VelocityScale;
+    };
+
+    virtual void CreateShaders(RenderContext& ctx) override;
+    virtual void CreateRootSignatures(RenderContext& ctx)override;
+    virtual void CreatePSOs(RenderContext& ctx) override;
+    virtual void CreateResources(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) override;
 
     void RenderParticles(const RenderContext& ctx);
     void RenderFluidDepth(const RenderContext& ctx);
@@ -114,4 +141,5 @@ private:
     void RenderFluidThickness(const RenderContext& ctx);
     void RenderFluidComposite(const RenderContext& ctx);
     void RenderDiffuse(const RenderContext& ctx);
+    void ToneMapping(const RenderContext& ctx);
 };

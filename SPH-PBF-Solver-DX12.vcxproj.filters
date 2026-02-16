@@ -96,6 +96,12 @@
     <ClCompile Include="Source\Graphics\PlanePass.cpp">
       <Filter>Source\Graphics</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Graphics\SkyboxPass.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Graphics\DescriptorHeapManager.cpp">
+      <Filter>Source\Graphics</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\App\FluidSimApp.h">
@@ -169,6 +175,12 @@
     </ClInclude>
     <ClInclude Include="Source\Engine\pch.h">
       <Filter>Source\Engine</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\SkyboxPass.h">
+      <Filter>Source\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Graphics\DescriptorHeapManager.h">
+      <Filter>Source\Graphics</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -279,6 +291,15 @@
     </FxCompile>
     <FxCompile Include="Shaders\Simulation\ClearCounterCS.hlsl">
       <Filter>Shaders\Simulation</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\SkyboxVS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\SkyboxPS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Rendering\ToneMappingPS.hlsl">
+      <Filter>Shaders\Rendering</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>

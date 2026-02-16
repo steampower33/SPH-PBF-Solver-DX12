@@ -7,7 +7,7 @@ class IRenderPass
 public:
     virtual ~IRenderPass() = default;
 
-    void Initialize(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
+    void Initialize(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
     {
         m_Width = ctx.Width;
         m_Height = ctx.Height;
@@ -27,8 +27,8 @@ protected:
     UINT m_Width = 0;
     UINT m_Height = 0;
 
-    virtual void CreateShaders(const RenderInitContext& ctx) = 0;
-    virtual void CreateRootSignatures(const RenderInitContext& ctx) = 0;
-    virtual void CreatePSOs(const RenderInitContext& ctx) = 0;
-    virtual void CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) = 0;
+    virtual void CreateShaders(RenderContext& ctx) = 0;
+    virtual void CreateRootSignatures(RenderContext& ctx) = 0;
+    virtual void CreatePSOs(RenderContext& ctx) = 0;
+    virtual void CreateResources(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps) = 0;
 };

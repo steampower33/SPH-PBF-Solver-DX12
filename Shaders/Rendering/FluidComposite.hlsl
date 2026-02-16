@@ -3,6 +3,11 @@ Texture2D<float> g_Thickness : register(t2);
 Texture2D<float4> g_SceneTex : register(t3);
 Texture2D<float4> g_SceneDepth : register(t4);
 
+TextureCube g_EnvMap : register(t5);
+TextureCube g_SpecularMap : register(t6);
+TextureCube g_DiffuseMap : register(t7);
+Texture2D g_BrdfMap : register(t8);
+
 SamplerState g_PointClamp : register(s0);
 SamplerState g_LinearClamp : register(s1);
 
@@ -16,12 +21,14 @@ cbuffer cbParams : register(b0)
     float2 g_InvScreenSize;
 };
 
-static const float3 g_LightPos = float3(0.0f, 10.0f, 10.0f);
-static const float g_Roughness = 0.05f;
+static const float3 g_LightPos = float3(-40.0f, 80.0f, -20.0f);
+static const float g_Roughness = 0.02f;
+static const float g_Metallic = 0.0f;
 static const float3 g_F0 = float3(0.02f, 0.02f, 0.02f);
 static const float3 g_AbsorptionCoef = float3(1.5f, 0.6f, 0.1f);
 static const float g_DistortionScale = 0.05f;
 static const float3 g_ScatterColor = float3(0.0f, 0.2f, 0.3f);
+static const float3 g_Albedo = float3(0.0f, 0.1f, 0.3f);
 
 #define PI 3.14159265359
 
@@ -73,6 +80,11 @@ float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
 float3 FresnelSchlick(float cosTheta, float3 F0)
 {
     return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
+{
+    return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
 }
 
 // ===============================================================================================
@@ -186,7 +198,7 @@ float4 main(VSOutput input) : SV_Target
     float3 L = normalize(-normalize(float3(0, 0, 0) - g_LightPos)); // Directional Light Dir
     float3 V = normalize(g_CamPos - posWorld);
     float3 H = normalize(L + V);
-
+    
     // --------------------------------------------------------
     // C. 물리 연산 (굴절, 흡수, 반사, 라이팅)
     // --------------------------------------------------------

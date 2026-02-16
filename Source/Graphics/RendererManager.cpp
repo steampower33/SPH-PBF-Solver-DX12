@@ -1,7 +1,9 @@
 #include "SSFRPass.h"
 #include "PlanePass.h"
+#include "SkyboxPass.h"
 #include "GraphicsCore.h"
 #include "ShaderHelper.h"
+#include "DescriptorHeapManager.h"
 
 #include "RendererManager.h"
 
@@ -13,7 +15,7 @@ void RendererManager::Update(const SM::Matrix& view, const SM::Matrix& proj, con
 	m_RenderContext.InvProj = proj.Invert().Transpose();
 	m_RenderContext.CamPos = camPos;
 	m_RenderContext.ViewProj = (view * proj).Transpose();
-	m_RenderContext.InvScreenSize = { 1.0f / m_RenderInitContext.Width, 1.0f / m_RenderInitContext.Height };
+	m_RenderContext.InvScreenSize = { 1.0f / m_RenderContext.Width, 1.0f / m_RenderContext.Height };
 
 	{
 		SM::Vector3 targetPos = m_RenderContext.TargetPos;
@@ -57,16 +59,19 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
 {
 	m_RenderContext.CmdList = cmdList;
 
-	m_RenderContext.FrameIndex = m_RenderInitContext.GraphicsCore->m_FrameIndex;
+	m_RenderContext.FrameIndex = m_RenderContext.GraphicsCore->m_FrameIndex;
 
-	m_RenderContext.CurrentRTV = m_RenderInitContext.GraphicsCore->GetCurrentBackBufferRTV();
-	m_RenderContext.CurrentDSV = m_RenderInitContext.GraphicsCore->GetDepthStencilView();
+	m_RenderContext.CurrentRTV = m_RenderContext.GraphicsCore->GetCurrentBackBufferRTV();
+	m_RenderContext.CurrentDSV = m_RenderContext.GraphicsCore->GetDepthStencilView();
+
+	ID3D12DescriptorHeap* heaps[] = { m_RenderContext.HeapManager->GetSRVHeap() };
+	cmdList->SetDescriptorHeaps(1, heaps);
 
 	for (auto& pass : m_RenderPasses)
 		pass->RenderDepthOnly(m_RenderContext);
 
 	D3D12_RESOURCE_BARRIER b1[] = {
-	CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapTex.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
+	CD3DX12_RESOURCE_BARRIER::Transition(m_RenderContext.ShadowMapTex.Get(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE)
 	};
 	cmdList->ResourceBarrier(1, b1);
 
@@ -74,7 +79,7 @@ void RendererManager::Render(ID3D12GraphicsCommandList* cmdList)
 		pass->Render(m_RenderContext);
 
 	D3D12_RESOURCE_BARRIER b2[] = {
-	CD3DX12_RESOURCE_BARRIER::Transition(m_ShadowMapTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE)
+	CD3DX12_RESOURCE_BARRIER::Transition(m_RenderContext.ShadowMapTex.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE)
 	};
 	cmdList->ResourceBarrier(1, b2);
 }
@@ -92,49 +97,36 @@ void RendererManager::OnGui()
 	}
 }
 
-void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
+void RendererManager::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ShaderHelper* shaderHelper, float width, float height, GraphicsCore* graphicsCore, SphSolver* sphSolver, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps, DescriptorHeapManager* heapManager)
 {
-	m_RenderInitContext.Device = device;
-	m_RenderInitContext.CmdList = cmdList;
-	m_RenderInitContext.ShaderHelper = shaderHelper;
-	m_RenderInitContext.GraphicsCore = graphicsCore;
-	m_RenderInitContext.Width = width;
-	m_RenderInitContext.Height = height;
-
 	m_RenderContext.Device = device;
+	m_RenderContext.CmdList = cmdList;
+	m_RenderContext.ShaderHelper = shaderHelper;
+	m_RenderContext.GraphicsCore = graphicsCore;
+	m_RenderContext.Width = (int)width;
+	m_RenderContext.Height = (int)height;
+	m_RenderContext.Queue = graphicsCore->GetCommandQueue();
+	m_RenderContext.HeapManager = heapManager;
 	m_RenderContext.Solver = sphSolver;
-
-	CreateSceneResources(m_RenderInitContext);
-
-	m_RenderPasses.emplace_back(std::make_unique<PlanePass>());
-	m_RenderPasses.emplace_back(std::make_unique<SSFRPass>()); // Render Last
-
-	for (auto& pass : m_RenderPasses)
-		pass->Initialize(m_RenderInitContext, uploadHeaps);
-
-	m_RenderContext.SceneRTV = m_SceneColorRTVHandle;
-	m_RenderContext.SceneDSV = m_SceneDSVHandle;
-
-	m_RenderContext.SceneColorSRVHandle = m_SceneColorSRVHandle;
-	m_RenderContext.SceneDepthSRVHandle = m_SceneDepthSRVHandle;
-
-	m_RenderContext.SceneColorTex = m_SceneColorTex.Get();
-	m_RenderContext.SceneDepthTex = m_SceneDepthTex.Get();
 
 	D3D12_VIEWPORT viewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
 	D3D12_RECT scissorRect = { 0, 0, (LONG)width, (LONG)height };
 	m_RenderContext.Viewport = viewport;
 	m_RenderContext.ScissorRect = scissorRect;
 
-	CreateShadowResources(m_RenderInitContext);
+	CreateSceneResources(m_RenderContext);
+	CreateShadowResources(m_RenderContext);
+	CreateHdrResources(m_RenderContext);
 
-	m_RenderContext.ShadowSRVHeap = m_ShadowSRVHeap;
-	m_RenderContext.ShadowDSVHandle = m_ShadowDSVHandle;
-	m_RenderContext.ShadowSRVHandle = m_ShadowSRVHandle;
+	m_RenderPasses.emplace_back(std::make_unique<SkyboxPass>());
+	m_RenderPasses.emplace_back(std::make_unique<PlanePass>());
+	m_RenderPasses.emplace_back(std::make_unique<SSFRPass>()); // Render Last
+	for (auto& pass : m_RenderPasses)
+		pass->Initialize(m_RenderContext, uploadHeaps);
 }
 
 
-void RendererManager::CreateShadowResources(const RenderInitContext& ctx)
+void RendererManager::CreateShadowResources(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 
@@ -161,70 +153,35 @@ void RendererManager::CreateShadowResources(const RenderInitContext& ctx)
 	ThrowIfFailed(device->CreateCommittedResource(
 		&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		&clearVal, IID_PPV_ARGS(&m_ShadowMapTex)
+		&clearVal, IID_PPV_ARGS(&m_RenderContext.ShadowMapTex)
 	));
-	Helpers::SetDebugName(m_ShadowMapTex.Get(), "Shadow Map Texture");
+	Helpers::SetDebugName(m_RenderContext.ShadowMapTex.Get(), "Shadow Map Texture");
 
-	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-	dsvHeapDesc.NumDescriptors = 1;
-	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_ShadowDSVHeap)));
-	m_ShadowDSVHandle = m_ShadowDSVHeap->GetCPUDescriptorHandleForHeapStart();
-
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 1;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_ShadowSRVHeap)));
-	m_ShadowSRVHandle = m_ShadowSRVHeap->GetCPUDescriptorHandleForHeapStart();
-
+	ctx.ShadowDSVHandle = ctx.HeapManager->AllocDSV();
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Texture2D.MipSlice = 0;
-	device->CreateDepthStencilView(m_ShadowMapTex.Get(), &dsvDesc, m_ShadowDSVHandle);
+	device->CreateDepthStencilView(m_RenderContext.ShadowMapTex.Get(), &dsvDesc, ctx.ShadowDSVHandle);
 
+	ctx.ShadowSRVHandleCpu = ctx.HeapManager->AllocSRV(&ctx.ShadowSRVHandleGpu);
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = DXGI_FORMAT_R32_FLOAT;
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MipLevels = 1;
-	device->CreateShaderResourceView(m_ShadowMapTex.Get(), &srvDesc, m_ShadowSRVHandle);
+	device->CreateShaderResourceView(m_RenderContext.ShadowMapTex.Get(), &srvDesc, ctx.ShadowSRVHandleCpu);
 
 }
 
-void RendererManager::CreateSceneResources(const RenderInitContext& ctx)
+void RendererManager::CreateSceneResources(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 	UINT width = ctx.Width;
 	UINT height = ctx.Height;
 
-	// Descriptor Heap (RTV, DSV, SRV)
-	{
-		// RTV Heap Scene Color 
-		D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-		rtvHeapDesc.NumDescriptors = 1;
-		rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-		rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_SceneRTVHeap)));
-
-		// DSV Heap Scene Depth
-		D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-		dsvHeapDesc.NumDescriptors = 1;
-		dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-		dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_SceneDSVHeap)));
-
-		// SRV Heap Scene Color 1 + Scene Depth 1 = 2
-		D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-		srvHeapDesc.NumDescriptors = 2; // Color 1, Depth 1
-		srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-		ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_SceneSRVHeap)));
-	}
-
 	// [Color] FP16 For HDR
-	DXGI_FORMAT colorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+	DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
 	// [Depth] TYPELESS 
 	// R32_TYPELESS -> DSV: D32_FLOAT -> SRV: R32_FLOAT
@@ -245,21 +202,21 @@ void RendererManager::CreateSceneResources(const RenderInitContext& ctx)
 
 	// Scene Color
 	{
-		texDesc.Format = colorFormat;
+		texDesc.Format = hdrFormat;
 		texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
 		D3D12_CLEAR_VALUE clearVal = {};
-		clearVal.Format = colorFormat;
+		clearVal.Format = hdrFormat;
 		clearVal.Color[0] = 0.0f; clearVal.Color[1] = 0.0f; clearVal.Color[2] = 0.0f; clearVal.Color[3] = 1.0f;
 
 		// Initial State: RENDER_TARGET
 		ThrowIfFailed(device->CreateCommittedResource(
 			&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
 			D3D12_RESOURCE_STATE_RENDER_TARGET,
-			&clearVal, IID_PPV_ARGS(&m_SceneColorTex)
+			&clearVal, IID_PPV_ARGS(&ctx.SceneColorTex)
 		));
 
-		Helpers::SetDebugName(m_SceneColorTex.Get(), "Scene Color Texture");
+		Helpers::SetDebugName(ctx.SceneColorTex.Get(), "Scene Color Texture");
 	}
 
 	// Scene Depth Tex
@@ -276,46 +233,96 @@ void RendererManager::CreateSceneResources(const RenderInitContext& ctx)
 		ThrowIfFailed(device->CreateCommittedResource(
 			&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
 			D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-			&clearVal, IID_PPV_ARGS(&m_SceneDepthTex)
+			&clearVal, IID_PPV_ARGS(&ctx.SceneDepthTex)
 		));
 
-		Helpers::SetDebugName(m_SceneDepthTex.Get(), "Scene Depth Texture");
+		Helpers::SetDebugName(ctx.SceneDepthTex.Get(), "Scene Depth Texture");
 	}
 
 	// RTV
-	m_SceneColorRTVHandle = m_SceneRTVHeap->GetCPUDescriptorHandleForHeapStart();
+	ctx.SceneRTVHandle = ctx.HeapManager->AllocRTV();
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-	rtvDesc.Format = colorFormat;
+	rtvDesc.Format = hdrFormat;
 	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-	device->CreateRenderTargetView(m_SceneColorTex.Get(), &rtvDesc, m_SceneColorRTVHandle);
+	device->CreateRenderTargetView(ctx.SceneColorTex.Get(), &rtvDesc, ctx.SceneRTVHandle);
 
 	// DSV
-	m_SceneDSVHandle = m_SceneDSVHeap->GetCPUDescriptorHandleForHeapStart();
+	ctx.SceneDSVHandle = ctx.HeapManager->AllocDSV();
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
 	dsvDesc.Format = depthDSVFormat; // D32_FLOAT
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	device->CreateDepthStencilView(m_SceneDepthTex.Get(), &dsvDesc, m_SceneDSVHandle);
+	device->CreateDepthStencilView(ctx.SceneDepthTex.Get(), &dsvDesc, ctx.SceneDSVHandle);
 
 	// SRV
-	UINT srvIncSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(m_SceneSRVHeap->GetCPUDescriptorHandleForHeapStart());
-
-	m_SceneColorSRVHandle = srvHandle;
+	ctx.SceneColorSRVHandleCpu = ctx.HeapManager->AllocSRV(&ctx.SceneColorSRVHandleGpu);
 	D3D12_SHADER_RESOURCE_VIEW_DESC colorSrvDesc = {};
-	colorSrvDesc.Format = colorFormat;
+	colorSrvDesc.Format = hdrFormat;
 	colorSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	colorSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	colorSrvDesc.Texture2D.MipLevels = 1;
-	device->CreateShaderResourceView(m_SceneColorTex.Get(), &colorSrvDesc, srvHandle);
+	device->CreateShaderResourceView(ctx.SceneColorTex.Get(), &colorSrvDesc, ctx.SceneColorSRVHandleCpu);
 
-	srvHandle.Offset(1, srvIncSize);
-	m_SceneDepthSRVHandle = srvHandle;
-
+	ctx.SceneDepthSRVHandleCpu = ctx.HeapManager->AllocSRV(&ctx.SceneDepthSRVHandleGpu);
 	D3D12_SHADER_RESOURCE_VIEW_DESC depthSrvDesc = {};
 	depthSrvDesc.Format = depthSRVFormat; // R32_FLOAT
 	depthSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 	depthSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	depthSrvDesc.Texture2D.MipLevels = 1;
-	device->CreateShaderResourceView(m_SceneDepthTex.Get(), &depthSrvDesc, srvHandle);
+	device->CreateShaderResourceView(ctx.SceneDepthTex.Get(), &depthSrvDesc, ctx.SceneDepthSRVHandleCpu);
 }
 
+void RendererManager::CreateHdrResources(RenderContext& ctx)
+{
+	auto device = ctx.Device;
+	UINT width = ctx.Width;
+	UINT height = ctx.Height;
+
+	// [Color] FP16 For HDR
+	DXGI_FORMAT hdrFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+
+	D3D12_RESOURCE_DESC texDesc = {};
+	texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texDesc.Width = width;
+	texDesc.Height = height;
+	texDesc.DepthOrArraySize = 1;
+	texDesc.MipLevels = 1;
+	texDesc.SampleDesc.Count = 1;
+	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+
+	auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+
+	// HdrTex
+	{
+		texDesc.Format = hdrFormat;
+		texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+		D3D12_CLEAR_VALUE clearVal = {};
+		clearVal.Format = hdrFormat;
+		clearVal.Color[0] = 0.0f; clearVal.Color[1] = 0.0f; clearVal.Color[2] = 0.0f; clearVal.Color[3] = 1.0f;
+
+		// Initial State: RENDER_TARGET
+		ThrowIfFailed(device->CreateCommittedResource(
+			&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc,
+			D3D12_RESOURCE_STATE_RENDER_TARGET,
+			&clearVal, IID_PPV_ARGS(&m_RenderContext.HdrTex)
+		));
+
+		Helpers::SetDebugName(m_RenderContext.HdrTex.Get(), "m_HdrTex");
+	}
+
+	// RTV
+	ctx.HdrRTVHandle = ctx.HeapManager->AllocRTV();
+	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+	rtvDesc.Format = hdrFormat;
+	rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+	device->CreateRenderTargetView(m_RenderContext.HdrTex.Get(), &rtvDesc, ctx.HdrRTVHandle);
+
+	// SRV
+	ctx.HdrSRVHandleCpu = ctx.HeapManager->AllocSRV(&ctx.HdrSRVHandleGpu);
+	D3D12_SHADER_RESOURCE_VIEW_DESC colorSrvDesc = {};
+	colorSrvDesc.Format = hdrFormat;
+	colorSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	colorSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	colorSrvDesc.Texture2D.MipLevels = 1;
+	device->CreateShaderResourceView(m_RenderContext.HdrTex.Get(), &colorSrvDesc, ctx.HdrSRVHandleCpu);
+}

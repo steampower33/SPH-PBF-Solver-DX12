@@ -63,3 +63,6 @@ namespace SM = DirectX::SimpleMath;
         PIXEndEvent(commandList)
 
 #endif
+
+#include "DDSTextureLoader.h"
+#include "ResourceUploadBatch.h"

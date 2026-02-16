@@ -6,6 +6,7 @@
 #include "ShaderHelper.h"
 #include "SimGui.h"
 #include "Camera.h"
+#include "DescriptorHeapManager.h"
 
 class FluidSimApp {
 public:
@@ -23,12 +24,13 @@ public:
 
 	static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
-	GraphicsCore m_GraphicsCore;
-	RendererManager	 m_RendererManager;
-	SphSolver    m_Solver;
-	ShaderHelper m_ShaderHelper;
-	SimGui       m_Gui;
-	Camera		 m_Camera;
+	GraphicsCore			m_GraphicsCore;
+	RendererManager			m_RendererManager;
+	SphSolver				m_Solver;
+	ShaderHelper			m_ShaderHelper;
+	SimGui					m_Gui;
+	Camera					m_Camera;
+	DescriptorHeapManager	m_HeapManager;
 
 private:
 	float m_Width = 1280.0f;

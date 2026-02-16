@@ -10,13 +10,13 @@ cbuffer DiffuseConstants : register(b0)
     float Turbidity;
 };
 
+Texture2D<float> g_FluidDepth : register(t0);
 struct DiffuseParticle
 {
     float4 PositionLife;
     float4 VelocityScale;
 };
-StructuredBuffer<DiffuseParticle> g_Particles : register(t0);
-Texture2D<float> g_FluidDepth : register(t1);
+StructuredBuffer<DiffuseParticle> g_Particles : register(t3);
 
 // Quad Vertices (Triangle List Order)
 static const float2 kQuadVerts[6] =

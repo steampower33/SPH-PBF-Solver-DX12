@@ -84,16 +84,19 @@ float4 main(VSOutput input) : SV_TARGET
         else
             baseColor = float3(0.6, 0.4, 0.8); // RU - Purple
     }
+
+    baseColor = pow(baseColor, 2.2);
     
     float4 shadowPosH = mul(float4(input.PosW, 1.0f), g_ShadowTransform);
-
     float shadowFactor = CalcShadowFactor(shadowPosH, g_ShadowMap, g_ShadowSampler);
 
     float3 floorColor = baseColor * (0.8 + 0.2 * checker);
     
-    float finalLight = max(shadowFactor, g_ShadowIntensity);
+    float shadowBrightness = 0.8f;
+    float sunBrightness = 0.2f;
+    float3 ambient = floorColor * shadowBrightness;
+    float3 direct = floorColor * sunBrightness * shadowFactor;
+    float3 finalColor = ambient + direct;
 
-    float3 finalColor = floorColor * finalLight;
-    finalColor += floorColor * 0.1;
     return float4(finalColor, 1.0);
 }

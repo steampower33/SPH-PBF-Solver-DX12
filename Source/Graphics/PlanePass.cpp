@@ -9,32 +9,6 @@ void PlanePass::Render(const RenderContext& ctx)
 	auto cmdList = ctx.CmdList;
 	auto device = ctx.Device;
 
-	D3D12_RESOURCE_BARRIER barrierStart = CD3DX12_RESOURCE_BARRIER::Transition(
-		ctx.SceneDepthTex,
-		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-		D3D12_RESOURCE_STATE_DEPTH_WRITE
-	);
-	cmdList->ResourceBarrier(1, &barrierStart);
-
-	const float clearColor[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-	cmdList->ClearRenderTargetView(ctx.SceneRTV, clearColor, 0, nullptr);
-	cmdList->ClearDepthStencilView(ctx.SceneDSV, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-	cmdList->OMSetRenderTargets(1, &ctx.SceneRTV, FALSE, &ctx.SceneDSV);
-
-	cmdList->RSSetViewports(1, &ctx.Viewport);
-	cmdList->RSSetScissorRects(1, &ctx.ScissorRect);
-
-	UINT frameIndex = ctx.FrameIndex;
-	UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	CD3DX12_CPU_DESCRIPTOR_HANDLE srcHandle(ctx.ShadowSRVHeap->GetCPUDescriptorHandleForHeapStart());
-	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(m_PlaneSRVHeap->GetCPUDescriptorHandleForHeapStart(), frameIndex, descriptorSize);
-
-	device->CopyDescriptorsSimple(1, destHandle, srcHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	cmdList->SetGraphicsRootSignature(m_PlaneRootSig.Get());
-	cmdList->SetPipelineState(m_PlanePSO.Get());
-
 	m_Params.View = ctx.Globals.View;
 	m_Params.Proj = ctx.Globals.Proj;
 	m_Params.ShadowTransform = ctx.ShadowTransform;
@@ -42,13 +16,11 @@ void PlanePass::Render(const RenderContext& ctx)
 	m_Params.LightDir = ctx.LightDir;
 	m_Params.ShadowIntensity = ctx.ShadowIntensity;
 
+	cmdList->SetGraphicsRootSignature(m_PlaneRootSig.Get());
+	cmdList->SetPipelineState(m_PlanePSO.Get());
+
 	cmdList->SetGraphicsRoot32BitConstants(0, sizeof(Params) / 4, &m_Params, 0);
-
-	ID3D12DescriptorHeap* heaps[] = { m_PlaneSRVHeap.Get()};
-	cmdList->SetDescriptorHeaps(1, heaps);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_PlaneSRVHeap->GetGPUDescriptorHandleForHeapStart(), frameIndex, descriptorSize);
-	cmdList->SetGraphicsRootDescriptorTable(1, gpuHandle);
+	cmdList->SetGraphicsRootDescriptorTable(1, ctx.ShadowSRVHandleGpu);
 
 	cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	cmdList->IASetVertexBuffers(0, 1, &m_QuadVBView);
@@ -56,7 +28,7 @@ void PlanePass::Render(const RenderContext& ctx)
 	cmdList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 	D3D12_RESOURCE_BARRIER barrierEnd = CD3DX12_RESOURCE_BARRIER::Transition(
-		ctx.SceneDepthTex,
+		ctx.SceneDepthTex.Get(),
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 	);
@@ -67,13 +39,13 @@ void PlanePass::RenderDepthOnly(const RenderContext& ctx)
 {
 }
 
-void PlanePass::CreateShaders(const RenderInitContext& ctx)
+void PlanePass::CreateShaders(RenderContext& ctx)
 {
 	m_PlaneVS = ctx.ShaderHelper->Compile(L"./Shaders/Rendering/", L"PlaneVS.hlsl", L"main", L"vs_6_0");
 	m_PlanePS = ctx.ShaderHelper->Compile(L"./Shaders/Rendering/", L"PlanePS.hlsl", L"main", L"ps_6_0");
 }
 
-void PlanePass::CreateRootSignatures(const RenderInitContext& ctx)
+void PlanePass::CreateRootSignatures(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 
@@ -110,7 +82,7 @@ void PlanePass::CreateRootSignatures(const RenderInitContext& ctx)
 	}
 }
 
-void PlanePass::CreatePSOs(const RenderInitContext& ctx)
+void PlanePass::CreatePSOs(RenderContext& ctx)
 {
 	auto device = ctx.Device;
 
@@ -142,7 +114,7 @@ void PlanePass::CreatePSOs(const RenderInitContext& ctx)
 	}
 }
 
-void PlanePass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
+void PlanePass::CreateResources(RenderContext& ctx, std::vector<ComPtr<ID3D12Resource>>& uploadHeaps)
 {
 	auto device = ctx.Device;
 	auto cmdList = ctx.CmdList;
@@ -171,16 +143,6 @@ void PlanePass::CreateResources(const RenderInitContext& ctx, std::vector<ComPtr
 		m_QuadIBView.BufferLocation = m_QuadIB->GetGPUVirtualAddress();
 		m_QuadIBView.Format = DXGI_FORMAT_R16_UINT;
 		m_QuadIBView.SizeInBytes = ibByteSize;
-	}
-
-	// Srv Heap
-	{
-		D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-		srvHeapDesc.NumDescriptors = GraphicsCore::FrameCount;
-		srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-
-		ThrowIfFailed(device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_PlaneSRVHeap)));
 	}
 }
 
