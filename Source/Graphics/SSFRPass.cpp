@@ -11,9 +11,9 @@ void SSFRPass::Render(const RenderContext& ctx)
 	{
 		m_CompositeParams.InvView = ctx.InvView;
 		m_CompositeParams.InvProj = ctx.InvProj;
-		m_CompositeParams.ShadowTransform = ctx.ShadowTransform;
 		m_CompositeParams.CamPos = ctx.CamPos;
-		m_CompositeParams.ShadowIntensity = ctx.ShadowIntensity;
+		m_CompositeParams.LightDir = ctx.LightDir;
+		m_CompositeParams.LightIntensity = ctx.LightIntensity;
 
 		m_DiffuseParams.ViewProj = ctx.ViewProj;
 		m_DiffuseParams.InvView = ctx.InvView;
@@ -96,7 +96,6 @@ void SSFRPass::OnGui(RenderContext& ctx)
 		if (m_bDebugDrawParticles)
 		{
 			ImGui::DragFloat("Visual Radius", &ctx.Globals.VisualRadius, 0.001f, 0.01f, 0.5f);
-			//ctx.Globals.VisualRadius = 0.02f;
 		}
 		else
 		{
@@ -120,7 +119,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 		ImGui::DragFloat("Turbidity", &m_DiffuseParams.Turbidity, 0.1f, 0.0f, 20.0f, "%.1f");
 	}
 
-	if (ImGui::CollapsingHeader("ToneMaaping", ImGuiTreeNodeFlags_DefaultOpen))
+	if (ImGui::CollapsingHeader("ToneMapping", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		ImGui::DragFloat("Gamma", &m_ToneMappingParams.Gamma, 0.1f, 0.0f, 10.0f, "%.1f");
 		ImGui::DragFloat("Exposure", &m_ToneMappingParams.Exposure, 0.1f, 0.0f, 10.0f, "%.1f");

@@ -15,20 +15,19 @@ cbuffer cbParams : register(b0)
 {
     matrix g_ViewInverse;
     matrix g_ProjInverse;
-    matrix g_ShadowTransform;
     float3 g_CamPos;
-    float g_ShadowIntensity;
+    float pad0;
     float2 g_InvScreenSize;
+    float pad1[2];
+    float3 g_LightDir;
+    float g_LightIntensity;
 };
 
-static const float3 g_LightPos = float3(-40.0f, 80.0f, -20.0f);
 static const float g_Roughness = 0.02f;
 static const float g_Metallic = 0.0f;
 static const float3 g_F0 = float3(0.02f, 0.02f, 0.02f);
-static const float3 g_AbsorptionCoef = float3(1.5f, 0.6f, 0.1f);
+static const float3 g_AbsorptionCoef = float3(1.5f, 0.8f, 0.1f);
 static const float g_DistortionScale = 0.05f;
-static const float3 g_ScatterColor = float3(0.0f, 0.2f, 0.3f);
-static const float3 g_Albedo = float3(0.0f, 0.1f, 0.3f);
 
 #define PI 3.14159265359
 
@@ -37,10 +36,6 @@ struct VSOutput
     float4 Pos : SV_POSITION;
     float2 UV : TEXCOORD0;
 };
-
-// ===============================================================================================
-// PBR Helper Functions (Cook-Torrance BRDF)
-// ===============================================================================================
 
 float DistributionGGX(float3 N, float3 H, float roughness)
 {
@@ -87,11 +82,6 @@ float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
     return F0 + (max(float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness), F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
 }
 
-// ===============================================================================================
-// Helper Functions (Math & Depth)
-// ===============================================================================================
-
-// 뷰 공간 위치 복원
 float3 GetViewPos(float2 uv)
 {
     float z_view = g_DepthMap.Sample(g_PointClamp, uv).r;
@@ -101,18 +91,15 @@ float3 GetViewPos(float2 uv)
     return viewPosRaw.xyz * (z_view / viewPosRaw.z);
 }
 
-// 배경의 선형 깊이(양수 거리) 가져오기
 float GetSceneLinearDepth(float2 uv)
 {
     float hwDepth = g_SceneDepth.Sample(g_PointClamp, uv).r;
     float4 clipPos = float4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, hwDepth, 1.0);
     float4 viewPos = mul(clipPos, g_ProjInverse);
     
-    // RH 좌표계에서는 z가 음수이므로 -를 붙여 양수 거리로 반환
     return -viewPos.z / viewPos.w;
 }
 
-// 스크린 스페이스 노멀 계산
 float3 ReconstructViewNormal(float2 uv, float3 centerPos)
 {
     float3 posRight = GetViewPos(uv + float2(g_InvScreenSize.x, 0.0));
@@ -126,34 +113,14 @@ float3 ReconstructViewNormal(float2 uv, float3 centerPos)
     return normalize(N);
 }
 
-// Procedural Skybox
-float3 GetSkyColor(float3 dir)
-{
-    float t = 0.5 * (dir.y + 1.0);
-    return lerp(float3(1.0, 1.0, 1.0), float3(0.1, 0.4, 0.8), t);
-}
-
-// ===============================================================================================
-// 3. Lighting & Physics Logic
-// ===============================================================================================
-
-// 굴절 UV 계산 및 깊이 판정
 float2 CalculateRefractionUV(float2 baseUV, float3 normalView, float thickness, float myDepthDist)
 {
-    // 굴절 오프셋 계산
     float2 offset = normalView.xy * g_DistortionScale * saturate(thickness);
     float2 refractUV = baseUV + offset;
     
-    // 깊이 테스트
-    // RH 좌표계: 내 깊이(myDepthDist)는 양수 거리
     float bgDepthDist = GetSceneLinearDepth(refractUV);
-
-    // 배경(bg)이 나(my)보다 값이 작다 = 더 가깝다(앞에 있다)
     if (bgDepthDist < myDepthDist)
-    {
-        return baseUV; // 굴절 취소
-    }
-    
+        return baseUV;
     return refractUV;
 }
 
@@ -175,16 +142,12 @@ float3 ComputeSpecular(float3 N, float3 V, float3 L, float3 H)
 
 float4 main(VSOutput input) : SV_Target
 {
-    // [Early Exit] 배경이면 바로 리턴
     float depth = g_DepthMap.Sample(g_PointClamp, input.UV).r;
-    if (depth > 1000.0) // Far Plane Check
+    if (depth > 1000.0)
     {
         return g_SceneTex.Sample(g_PointClamp, input.UV);
     }
 
-    // --------------------------------------------------------
-    // A. 지오메트리 복원 (Position & Normal)
-    // --------------------------------------------------------
     float3 posView = GetViewPos(input.UV);
     float3 N_view = ReconstructViewNormal(input.UV, posView);
     float3 N_world = normalize(mul(N_view, (float3x3) g_ViewInverse));
@@ -192,49 +155,37 @@ float4 main(VSOutput input) : SV_Target
     float4 posWorld4 = mul(float4(posView, 1.0), g_ViewInverse);
     float3 posWorld = posWorld4.xyz / posWorld4.w;
 
-    // --------------------------------------------------------
-    // B. 벡터 준비 (Light, View, Half)
-    // --------------------------------------------------------
-    float3 L = normalize(-normalize(float3(0, 0, 0) - g_LightPos)); // Directional Light Dir
+    float3 L = normalize(-g_LightDir);
     float3 V = normalize(g_CamPos - posWorld);
     float3 H = normalize(L + V);
     
-    // --------------------------------------------------------
-    // C. 물리 연산 (굴절, 흡수, 반사, 라이팅)
-    // --------------------------------------------------------
-    
-    // 1. 굴절 (Refraction)
-    // posView.z는 RH에서 음수이므로 -를 붙여 양수 거리로 변환해서 넘김
     float myDist = -posView.z;
     float2 finalRefractUV = CalculateRefractionUV(input.UV, N_view, g_Thickness.Sample(g_LinearClamp, input.UV).r, myDist);
     float3 refractedColor = g_SceneTex.Sample(g_LinearClamp, finalRefractUV).rgb;
 
-    // 2. 흡수 (Absorption / Transmittance)
     float thickness = g_Thickness.Sample(g_LinearClamp, input.UV).r;
     float3 transmittance = exp(-g_AbsorptionCoef * thickness);
     
-    // 라이팅에 따른 투과율 보정 (그림자 등)
-    float diffuseLight = max(dot(N_world, L) * 0.5 + 0.5, g_ShadowIntensity);
+    float diffuseLight = max(dot(N_world, L) * 0.5 + 0.5, g_LightIntensity);
     float3 finalTransmittance = transmittance * diffuseLight;
 
-    // 굴절된 색상에 산란(Scatter) 색 섞기
+    float3 g_ScatterColor = float3(0.0, 0.05, 0.1);
     float3 waterBodyColor = lerp(g_ScatterColor, refractedColor, transmittance);
 
-    // 3. 스펙큘러 (Specular)
-    float3 specular = ComputeSpecular(N_world, V, L, H) * g_ShadowIntensity;
+    float3 directSpecular = ComputeSpecular(N_world, V, L, H) * g_LightIntensity;
 
-    // 4. 반사 (Reflection / Skybox)
-    float3 R = reflect(-V, N_world); // ViewDir은 카메라->픽셀 방향이어야 reflect 함수랑 맞음 (여기선 V가 픽셀->카메라라 -V)
-    float3 reflectionColor = GetSkyColor(R);
+    float NdotL = max(dot(N_world, L), 0.0);
+    directSpecular *= NdotL;
     
-    // 프레넬 계산 (반사/굴절 비율)
+    float3 R = reflect(-V, N_world);
+    float3 reflectionColor = g_SpecularMap.SampleLevel(g_LinearClamp, R, 0).rgb;
+    
+    reflectionColor *= 0.8f;
+    
     float3 F = FresnelSchlick(max(dot(H, V), 0.0), g_F0);
 
-    // --------------------------------------------------------
-    // D. 최종 합성 (Compositing)
-    // --------------------------------------------------------
     float3 finalColor = lerp(waterBodyColor, reflectionColor, F);
-    finalColor += specular;
+    finalColor += directSpecular;
 
     return float4(finalColor, 1.0);
 }

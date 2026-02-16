@@ -36,7 +36,7 @@ private:
 
 		float Mass = 1.0f;
 		float RestDensity = 1000.0f;
-		float Viscosity = 0.10f;
+		float Viscosity = 0.05f;
 		float GravityY = -9.81f;
 
 		SM::Vector2 BoxX;
@@ -48,7 +48,7 @@ private:
 
 		float N = 4.0f;
 		float DqScale = 0.3f;
-		float VorticityEpsilon = 0.4f;
+		float VorticityEpsilon = 0.3f;
 		float ExternalAccel = 0.0f;
 
 		float JitterFactor = 0.005f;
@@ -219,10 +219,10 @@ private:
 
 		float EnergyMin = 10.0f;
 		float EnergyMax = 20.0f;
-		float MaxLifeTime = 4.0f;
+		float MaxLifeTime = 2.0f;
 		float CellSizeScale = 1.0f;
 
-		float BubbleScale = 8.0f;
+		float BubbleScale = 10.0f;
 		float BubbleScaleChangeSpeed = 10.0f;
 		int SprayClassifyMaxNeighbours = 2;
 		int BubbleClassifyMinNeighbours = 8;

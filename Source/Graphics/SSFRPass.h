@@ -30,10 +30,12 @@ private:
     struct CompositeParams {
         SM::Matrix InvView;
         SM::Matrix InvProj;
-        SM::Matrix ShadowTransform;
         SM::Vector3 CamPos;
-        float ShadowIntensity;
+        float pad0;
         SM::Vector2 InvScreenSize;
+        float pad1[2];
+        SM::Vector3 LightDir;
+        float LightIntensity = 1.0f;
     } m_CompositeParams;
 
     struct LightParams {
@@ -47,7 +49,7 @@ private:
         SM::Matrix InvView;
         SM::Matrix InvProj;
         
-        float Scale = 0.01f;
+        float Scale = 0.005f;
         float BaseAlpha = 0.10f;
         SM::Vector2 InvScreenSize;
         

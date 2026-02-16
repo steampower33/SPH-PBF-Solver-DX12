@@ -91,6 +91,7 @@ void RendererManager::OnGui()
 
 	if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen))
 	{
+		ImGui::DragFloat("LightIntensity", &m_RenderContext.LightIntensity, 0.01f, 0.0f, 10.0f);
 		ImGui::DragFloat3("Light Pos", &m_RenderContext.LightPos.x, 0.1f, -100.0f, 100.0f);
 		ImGui::DragFloat3("Target Pos", &m_RenderContext.TargetPos.x, 0.1f, -100.0f, 100.0f);
 		ImGui::DragFloat("ShadowIntensity", &m_RenderContext.ShadowIntensity, 0.01f, 0.0f, 1.0f);

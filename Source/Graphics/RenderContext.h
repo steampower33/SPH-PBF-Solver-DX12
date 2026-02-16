@@ -60,6 +60,7 @@ struct RenderContext
     UINT res = 2048;
     SM::Vector3 LightPos = SM::Vector3(-40.0f, 80.0f, -20.0f);
     SM::Vector3 TargetPos = SM::Vector3(0.0f, 0.0f, 0.0f);
+    float LightIntensity = 1.0f;
     SM::Vector3 LightDir;
     SM::Matrix LightView;
     SM::Matrix LightProj;

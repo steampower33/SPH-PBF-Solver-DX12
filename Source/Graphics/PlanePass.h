@@ -23,7 +23,7 @@ private:
         SM::Matrix Proj;
         SM::Matrix ShadowTransform;
         SM::Vector3 LightPos;
-        float TileScale = 20.0f;
+        float TileScale = 100.0f;
         SM::Vector3 LightDir;
         float TileCount = 100.0f;
         float SpotAngleCos;
