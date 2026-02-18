@@ -26,6 +26,7 @@ struct SimParams
     float ExternalAccel;
     
     float JitterFactor;
+    uint NumPartialSums;
 };
 
 #include "Hash.hlsli"

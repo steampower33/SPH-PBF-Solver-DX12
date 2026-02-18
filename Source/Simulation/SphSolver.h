@@ -52,6 +52,7 @@ private:
 		float ExternalAccel = 0.0f;
 
 		float JitterFactor = 0.005f;
+		UINT NumPartialSums;
 	} m_SimParams;
 
 	int m_Substeps = 1;
@@ -69,9 +70,9 @@ private:
 	bool m_bCornerDamBreak = true;
 
 	UINT m_Groups = 0;
-	int m_X = 128;
-	int m_Y = 64;
-	int m_Z = 64;
+	int m_X = 200;
+	int m_Y = 50;
+	int m_Z = 50;
 	UINT m_NumParticles = m_X * m_Y * m_Z;
 
 	std::vector<SM::Vector3> m_InitPos;
@@ -95,14 +96,18 @@ private:
 		UAV_IDX_DELTAPOS,
 		UAV_IDX_VORTICITY,
 		UAV_IDX_GRID_INDICES,
-		UAV_IDX_SORTED_INDICES, // u9
+		UAV_IDX_SORTED_INDICES,
+		UAV_IDX_CELL_COUNT,
+		UAV_IDX_PARTICLE_CELL_INFO,
+		UAV_IDX_CELL_START,
+		UAV_IDX_PARTIAL_SUM,
 
 		// Diffuse Particles
-		UAV_IDX_DIFFUSE_PARTICLES,           // u10
-		UAV_IDX_DIFFUSE_PARTICLES_COMPACTED, // u11
-		UAV_IDX_COUNTERS,					 // u12
-		UAV_IDX_DISPATCH_ARGS,				 // u13
-		UAV_IDX_DRAW_ARGS,					 // u14
+		UAV_IDX_DIFFUSE_PARTICLES,
+		UAV_IDX_DIFFUSE_PARTICLES_COMPACTED,
+		UAV_IDX_COUNTERS,
+		UAV_IDX_DISPATCH_ARGS,
+		UAV_IDX_DRAW_ARGS,
 
 		// Temp UAVs
 		UAV_IDX_TEMP_POS,    // u0
@@ -118,6 +123,11 @@ private:
 		SRV_IDX_GRID_INDICES,// t5
 		SRV_IDX_LAMBDA,		 // t6
 		SRV_IDX_VORTICITY,   // t7
+
+		SRV_IDX_CELL_COUNT,
+		SRV_IDX_PARTICLE_CELL_INFO,
+		SRV_IDX_CELL_START,
+		SRV_IDX_PARTIAL_SUM,
 
 		SRV_IDX_DENSITY_RENDER,
 		SRV_IDX_DIFFUSE_PARTICLES_RENDER,
@@ -149,6 +159,11 @@ private:
 		TRANS_SRV_VEL_OUT,
 		TRANS_UAV_VEL_OUT,
 
+		UAV_BARRIER_SORTED_INDICIES,
+		TRANS_SRV_SORTED_INDICIES,
+		TRANS_UAV_SORTED_INDICIES,
+
+		UAV_BARRIER_GRID_INDICES,
 		TRANS_SRV_GRID_INDICES,
 		TRANS_UAV_GRID_INDICES,
 
@@ -177,6 +192,19 @@ private:
 		TRANS_UAV_DRAW_ARGS,
 		TRANS_INDIRECT_DRAW_ARGS,
 
+		UAV_BARRIER_CELL_COUNT,
+		TRANS_SRV_CELL_COUNT,
+		TRANS_UAV_CELL_COUNT,
+		UAV_BARRIER_PARTICLE_CELL_INFO,
+		TRANS_SRV_PARTICLE_CELL_INFO,
+		TRANS_UAV_PARTICLE_CELL_INFO,
+		UAV_BARRIER_CELL_START,
+		TRANS_SRV_CELL_START,
+		TRANS_UAV_CELL_START,
+		UAV_BARRIER_PARTIAL_SUM,
+		TRANS_SRV_PARTIAL_SUM,
+		TRANS_UAV_PARTIAL_SUM,
+
 		NUM_BARRIERS
 	};
 
@@ -198,6 +226,11 @@ private:
 	ComPtr<ID3D12Resource> m_DeltaPos;
 	ComPtr<ID3D12Resource> m_Vorticity;
 	ComPtr<ID3D12Resource> m_GridIndices;
+
+	ComPtr<ID3D12Resource> m_CellCount;
+	ComPtr<ID3D12Resource> m_ParticleCellInfo;
+	ComPtr<ID3D12Resource> m_CellStart;
+	ComPtr<ID3D12Resource> m_PartialSum;
 
 	ComPtr<ID3D12Resource> m_TempPosPred;
 	ComPtr<ID3D12Resource> m_TempPosOld;
@@ -270,8 +303,6 @@ private:
 	ComPtr<ID3D12RootSignature> m_PermuteRootSig;
 	ComPtr<ID3D12RootSignature> m_DiffuseRoogSig;
 
-	std::wstring m_ShaderBaseName = L"./Shaders/Simulation/";
-
 	ComPtr<ID3D12PipelineState> m_IntegrationPSO;
 	ComPtr<ID3D12PipelineState> m_ClearGridPSO;
 	ComPtr<ID3D12PipelineState> m_BuildGridPSO;
@@ -292,12 +323,20 @@ private:
 	ComPtr<ID3D12PipelineState> m_CopyDiffusePSO;
 	ComPtr<ID3D12PipelineState> m_BuildDrawArgsPSO;
 
+	ComPtr<ID3D12PipelineState> m_ClearCellCountPSO;
+	ComPtr<ID3D12PipelineState> m_CountParticlesPerCellPSO;
+	ComPtr<ID3D12PipelineState> m_PrefixSumLocalPSO;
+	ComPtr<ID3D12PipelineState> m_PrefixSumBlockPSO;
+	ComPtr<ID3D12PipelineState> m_PrefixSumFinalAddPSO;
+	ComPtr<ID3D12PipelineState> m_BuildSortedIndicesPSO;
+
 	ID3D12Device* m_pDevice = nullptr;
 
 	void UpdateInputs();
 	void ResetSimulation(ID3D12GraphicsCommandList* cmdList);
 
-	void RunBitonicSort(ID3D12GraphicsCommandList* cmdList);
+	void BitonicSort(ID3D12GraphicsCommandList* cmdList);
+	void CountingSort(ID3D12GraphicsCommandList* cmdList);
 	void PermuteAndCopyBack(ID3D12GraphicsCommandList* cmdList);
 	void BuildGrid(ID3D12GraphicsCommandList* cmdList);
 
@@ -306,7 +345,8 @@ private:
 	void ResetParticlePos();
 	void CreateAllViews(ID3D12Device* device);
 	void CreateComputePSO(ID3D12Device* device, ShaderHelper* helper,
-		std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, ComPtr<ID3D12RootSignature>& sig, std::wstring version = L"cs_6_0");
+		std::wstring shaderFile, ComPtr<ID3D12PipelineState>& outPSO, 
+		ComPtr<ID3D12RootSignature>& sig, std::wstring shaderPath);
 	void CreateGlobalRootSignature(ID3D12Device* device);
 	void CreatePermuteRootSignature(ID3D12Device* device);
 	void CreateDiffuseRootSignature(ID3D12Device* device);

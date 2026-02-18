@@ -13,7 +13,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float h = g_SP.CellSize;
     uint gridDim = g_SP.GridDim;
     
-    float3 myPos = g_RW_PosPred[id];
+    float3 myPos = g_PosPred[id];
     uint myHash = GetGridHash(myPos, h, gridDim);
 
     // Boundary Check
@@ -24,7 +24,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     }
 
     // Compare with Prev
-    float3 prevPos = g_RW_PosPred[id - 1];
+    float3 prevPos = g_PosPred[id - 1];
     uint prevHash = GetGridHash(prevPos, h, gridDim);
 
     if (myHash != prevHash)

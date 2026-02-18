@@ -40,6 +40,9 @@
     <Filter Include="Shaders\Simulation">
       <UniqueIdentifier>{7669e4f7-e207-4d30-bdc7-2cfc9334a437}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Shaders\Simulation\CountingSort">
+      <UniqueIdentifier>{7bf3581f-8087-4bb3-9e9b-dc205c6f88b5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Source\App\Main.cpp">
@@ -197,6 +200,9 @@
     <None Include="Shaders\Rendering\RenderDiffuseCommon.hlsli">
       <Filter>Shaders\Rendering</Filter>
     </None>
+    <None Include="Shaders\Simulation\CountingSort\CountingSortCommon.hlsli">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Simulation\BitonicSortCS.hlsl">
@@ -300,6 +306,24 @@
     </FxCompile>
     <FxCompile Include="Shaders\Rendering\ToneMappingPS.hlsl">
       <Filter>Shaders\Rendering</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\ClearCellCountCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\CountParticlesPerCellCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\PrefixSumLocalCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\PrefixSumBlockCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\PrefixSumFinalAddCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Simulation\CountingSort\BuildSortedIndicesCS.hlsl">
+      <Filter>Shaders\Simulation\CountingSort</Filter>
     </FxCompile>
   </ItemGroup>
 </Project>
