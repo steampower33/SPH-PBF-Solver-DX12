@@ -67,7 +67,8 @@ private:
 
 	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
-	bool m_bCornerDamBreak = true;
+	bool m_bCornerDamBreak = false;
+	bool m_bFlatBatch = true;
 
 	UINT m_Groups = 0;
 	int m_X = 50;
@@ -252,7 +253,7 @@ private:
 
 		float EnergyMin = 15.0f;
 		float EnergyMax = 30.0f;
-		float MaxLifeTime = 2.0f;
+		float MaxLifeTime = 1.0f;
 		float CellSizeScale = 1.0f;
 
 		float BubbleScale = 1.0f;
@@ -261,7 +262,7 @@ private:
 		int BubbleClassifyMinNeighbours = 8;
 
 		float BubbleBuoyancy = 1.5f;
-		float FluidAccelMul = 20.0f;
+		float FluidAccelMul = 10.0f;
 		int GeneratePerFrame = 32;
 	} m_DiffuseParams;
 

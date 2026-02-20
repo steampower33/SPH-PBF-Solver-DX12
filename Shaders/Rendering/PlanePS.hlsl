@@ -87,15 +87,15 @@ float4 main(VSOutput input) : SV_TARGET
 
     float checker = fmod(floor(scaledUV.x) + floor(scaledUV.y), 2.0);
 
-    float3 baseColor;
-    MakeColour(baseColor, input.UV);
+    float3 baseColor = 1.0f;
+    //MakeColour(baseColor, input.UV);
     
     baseColor = pow(baseColor, 2.2);
     
     float4 shadowPosH = mul(float4(input.PosW, 1.0f), g_ShadowTransform);
     float shadowFactor = CalcShadowFactor(shadowPosH, g_ShadowMap, g_ShadowSampler);
 
-    float3 floorColor = baseColor * (0.8 + 0.2 * checker);
+    float3 floorColor = baseColor * (0.5 + 0.5 * checker);
     
     float shadowBrightness = 0.8f;
     float sunBrightness = 0.2f;

@@ -19,6 +19,8 @@ void SphSolver::UpdateInputs()
 		m_bDoubleDamBreak = true;
 	else if (GetAsyncKeyState('C') & 0x8000)
 		m_bCornerDamBreak = true;
+	else if (GetAsyncKeyState('V') & 0x8000)
+		m_bFlatBatch = true;
 
 	if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
 		m_bWallMove = !m_bWallMove;
@@ -35,7 +37,7 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
 	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_UAV_DIFFUSE]);
 
-	if (m_bSingleDamBreak || m_bDoubleDamBreak || m_bCornerDamBreak)
+	if (m_bSingleDamBreak || m_bDoubleDamBreak || m_bCornerDamBreak || m_bFlatBatch)
 	{
 		ResetSimulation(cmdList);
 	}
@@ -518,37 +520,14 @@ void SphSolver::ResetParticlePos()
 
 	float offset = m_SimParams.CellSize;
 
-	float m_HalfWidthX = 10.0f;
-	float m_HalfWidthZ = 4.0f;
-
-	auto CornerDamBreak = [&]()
+	auto SingleDamBreak = [&](float HalfWidthX, float HalfWidthZ)
 		{
-			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
-			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
+			m_X = 50;
+			m_Y = 100;
+			m_Z = 50;
 
-			m_OriginMinX = m_SimParams.BoxX.x;
-
-			float startX = m_SimParams.BoxX.x + offset; // up
-			float startY = m_SimParams.BoxY.x + offset; // up
-			float startZ = m_SimParams.BoxZ.y - offset; // down
-
-			int idx = 0;
-			for (int z = 0; z < m_Z; z++)
-				for (int y = 0; y < m_Y; ++y)
-					for (int x = 0; x < m_X; ++x)
-					{
-						m_InitPos[idx] = SM::Vector3(
-							startX + (x * m_Spacing),
-							startY + (y * m_Spacing),
-							startZ - (z * m_Spacing));
-						idx++;
-					}
-		};
-
-	auto SingleDamBreak = [&]()
-		{
-			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
-			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
+			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
+			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
 			float startX = m_SimParams.BoxX.x + offset; // up
 			float startY = m_SimParams.BoxY.x + offset; // up
@@ -567,10 +546,14 @@ void SphSolver::ResetParticlePos()
 					}
 		};
 
-	auto DoubleDamBreak = [&]()
+	auto DoubleDamBreak = [&](float HalfWidthX, float HalfWidthZ)
 		{
-			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
-			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
+			m_X = 50;
+			m_Y = 100;
+			m_Z = 50;
+
+			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
+			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
 			UINT halfX = m_X;
 			UINT halfY = m_Y * 0.5f;
@@ -613,24 +596,81 @@ void SphSolver::ResetParticlePos()
 			}
 		};
 
+	auto CornerDamBreak = [&](float HalfWidthX, float HalfWidthZ)
+		{
+			m_X = 50;
+			m_Y = 100;
+			m_Z = 50;
+
+			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
+			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
+
+			m_OriginMinX = m_SimParams.BoxX.x;
+
+			float startX = m_SimParams.BoxX.x + offset; // up
+			float startY = m_SimParams.BoxY.x + offset; // up
+			float startZ = m_SimParams.BoxZ.y - offset; // down
+
+			int idx = 0;
+			for (int z = 0; z < m_Z; z++)
+				for (int y = 0; y < m_Y; ++y)
+					for (int x = 0; x < m_X; ++x)
+					{
+						m_InitPos[idx] = SM::Vector3(
+							startX + (x * m_Spacing),
+							startY + (y * m_Spacing),
+							startZ - (z * m_Spacing));
+						idx++;
+					}
+		};
+
+	auto FlatBatch = [&](float HalfWidthX, float HalfWidthZ) {
+
+		m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
+		m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
+
+		m_X = 125;
+		m_Y = 40;
+
+		float startX = m_SimParams.BoxX.x + offset; // up
+		float startY = m_SimParams.BoxY.x + offset; // up
+		float startZ = m_Z * m_Spacing * 0.5f; // down
+
+		int idx = 0;
+		for (int z = 0; z < m_Z; z++)
+			for (int y = 0; y < m_Y; ++y)
+				for (int x = 0; x < m_X; ++x)
+				{
+					m_InitPos[idx] = SM::Vector3(
+						startX + (x * m_Spacing),
+						startY + (y * m_Spacing),
+						startZ - (z * m_Spacing));
+					idx++;
+				}
+		};
 
 	if (m_bSingleDamBreak)
 	{
-		SingleDamBreak();
+		SingleDamBreak(6.0f, 6.0f);
 		m_bSingleDamBreak = false;
 	}
 	else if (m_bDoubleDamBreak)
 	{
-		DoubleDamBreak();
+		DoubleDamBreak(6.0f, 6.0f);
 		m_bDoubleDamBreak = false;
 	}
 	else if (m_bCornerDamBreak)
 	{
-		CornerDamBreak();
+		CornerDamBreak(10.0f, 4.0f);
 		m_bCornerDamBreak = false;
 	}
+	else if (m_bFlatBatch)
+	{
+		FlatBatch(10.0f, 4.0f);
+		m_bFlatBatch = false;
+	}
 
-
+	m_OriginMinX = m_SimParams.BoxX.x;
 }
 
 void SphSolver::CreateAllViews(ID3D12Device* device)
