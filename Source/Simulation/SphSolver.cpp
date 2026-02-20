@@ -12,15 +12,16 @@ void SphSolver::UpdateInputs()
 		m_SimParams.ExternalAccel = +pushStrength;
 	else if (GetAsyncKeyState('S') & 0x8000)
 		m_SimParams.ExternalAccel = 0.0f;
+	
+	if (GetAsyncKeyState('Q') & 0x0001)
+		m_bSolveDiffuseParticles = !m_bSolveDiffuseParticles;
 
-	if (GetAsyncKeyState('Z') & 0x8000)
+	if (GetAsyncKeyState('Z') & 0x0001)
 		m_bSingleDamBreak = true;
-	else if (GetAsyncKeyState('X') & 0x8000)
+	else if (GetAsyncKeyState('X') & 0x0001)
 		m_bDoubleDamBreak = true;
-	else if (GetAsyncKeyState('C') & 0x8000)
+	else if (GetAsyncKeyState('C') & 0x0001)
 		m_bCornerDamBreak = true;
-	else if (GetAsyncKeyState('V') & 0x8000)
-		m_bFlatBatch = true;
 
 	if (GetAsyncKeyState(VK_SHIFT) & 0x0001)
 		m_bWallMove = !m_bWallMove;
@@ -37,7 +38,7 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 {
 	cmdList->ResourceBarrier(1, &m_AllBarriers[TRANS_UAV_DIFFUSE]);
 
-	if (m_bSingleDamBreak || m_bDoubleDamBreak || m_bCornerDamBreak || m_bFlatBatch)
+	if (m_bSingleDamBreak || m_bDoubleDamBreak || m_bCornerDamBreak)
 	{
 		ResetSimulation(cmdList);
 	}
@@ -245,12 +246,13 @@ void SphSolver::OnGui()
 		float fps = (m_SimParams.DeltaTime > 0.0f) ? (1.0f / m_SimParams.DeltaTime) : 60.0f;
 		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Sim Fixed: %.1f FPS", fps);
 
-		ImGui::Text("Active Particles: %d", m_SimParams.NumParticles);
+		ImGui::Text("Active Fluid: %d", m_SimParams.NumParticles);
+		ImGui::Text("Active Max Diffuse: %d", m_DiffuseParams.MaxDiffuseParticles);
 		ImGui::Text("Time Step (dt): %.6f s", m_SimParams.DeltaTime);
 		if (ImGui::DragFloat("Target Sim FPS", &fps, 1, 30.0, 240.0)) {
 			m_SimParams.DeltaTime = 1.0f / (float)std::max(1, (int)fps);
 		}
-		ImGui::Checkbox("SolveDiffuseParticles", &m_bSolveDiffuseParticles);
+		ImGui::Checkbox("SolveDiffuseParticles(Q)", &m_bSolveDiffuseParticles);
 		ImGui::SliderInt("Substeps", &m_Substeps, 1, 10);
 		ImGui::SliderInt("Iterations", &m_Iterations, 1, 10);
 
@@ -522,10 +524,6 @@ void SphSolver::ResetParticlePos()
 
 	auto SingleDamBreak = [&](float HalfWidthX, float HalfWidthZ)
 		{
-			m_X = 50;
-			m_Y = 100;
-			m_Z = 50;
-
 			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
 			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
@@ -548,10 +546,6 @@ void SphSolver::ResetParticlePos()
 
 	auto DoubleDamBreak = [&](float HalfWidthX, float HalfWidthZ)
 		{
-			m_X = 50;
-			m_Y = 100;
-			m_Z = 50;
-
 			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
 			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
@@ -598,10 +592,6 @@ void SphSolver::ResetParticlePos()
 
 	auto CornerDamBreak = [&](float HalfWidthX, float HalfWidthZ)
 		{
-			m_X = 50;
-			m_Y = 100;
-			m_Z = 50;
-
 			m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
 			m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
@@ -629,9 +619,6 @@ void SphSolver::ResetParticlePos()
 		m_SimParams.BoxX = { -HalfWidthX, HalfWidthX };
 		m_SimParams.BoxZ = { -HalfWidthZ, HalfWidthZ };
 
-		m_X = 125;
-		m_Y = 40;
-
 		float startX = m_SimParams.BoxX.x + offset; // up
 		float startY = m_SimParams.BoxY.x + offset; // up
 		float startZ = m_Z * m_Spacing * 0.5f; // down
@@ -651,23 +638,18 @@ void SphSolver::ResetParticlePos()
 
 	if (m_bSingleDamBreak)
 	{
-		SingleDamBreak(6.0f, 6.0f);
+		SingleDamBreak(7.0f, 7.0f);
 		m_bSingleDamBreak = false;
 	}
 	else if (m_bDoubleDamBreak)
 	{
-		DoubleDamBreak(6.0f, 6.0f);
+		DoubleDamBreak(7.0f, 7.0f);
 		m_bDoubleDamBreak = false;
 	}
 	else if (m_bCornerDamBreak)
 	{
 		CornerDamBreak(10.0f, 4.0f);
 		m_bCornerDamBreak = false;
-	}
-	else if (m_bFlatBatch)
-	{
-		FlatBatch(10.0f, 4.0f);
-		m_bFlatBatch = false;
 	}
 
 	m_OriginMinX = m_SimParams.BoxX.x;
@@ -924,7 +906,6 @@ void SphSolver::BitonicSort(ID3D12GraphicsCommandList* cmdList)
 
 	GPU_PROFILE_END(cmdList);
 }
-
 
 void SphSolver::CountingSort(ID3D12GraphicsCommandList* cmdList)
 {

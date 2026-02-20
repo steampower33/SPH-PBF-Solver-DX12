@@ -20,6 +20,9 @@ void SSFRPass::Render(const RenderContext& ctx)
 		m_DiffuseParams.InvProj = ctx.InvProj;
 
 		m_DiffuseParams.InvScreenSize = ctx.InvScreenSize;
+
+		if (GetAsyncKeyState('W') & 0x0001)
+			m_bDebugDrawParticles = !m_bDebugDrawParticles;
 	}
 
 	if (m_bDebugDrawParticles)
@@ -89,7 +92,7 @@ void SSFRPass::OnGui(RenderContext& ctx)
 {
 	if (ImGui::CollapsingHeader("SSFR Visualization", ImGuiTreeNodeFlags_DefaultOpen))
 	{
-		ImGui::Checkbox("Debug: Draw Particles (Heatmap)", &m_bDebugDrawParticles);
+		ImGui::Checkbox("Debug: Draw Particles (W)", &m_bDebugDrawParticles);
 
 		ImGui::Separator();
 

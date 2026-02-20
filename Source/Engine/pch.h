@@ -62,6 +62,11 @@ namespace SM = DirectX::SimpleMath;
 #define GPU_PROFILE_END(commandList) \
         PIXEndEvent(commandList)
 
+#else
+
+#define GPU_PROFILE_BEGIN(commandList, formatString, ...) 
+#define GPU_PROFILE_END(commandList) 
+
 #endif
 
 #include "DDSTextureLoader.h"

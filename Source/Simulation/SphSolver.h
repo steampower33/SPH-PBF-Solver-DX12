@@ -67,8 +67,7 @@ private:
 
 	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
-	bool m_bCornerDamBreak = false;
-	bool m_bFlatBatch = true;
+	bool m_bCornerDamBreak = true;
 
 	UINT m_Groups = 0;
 	int m_X = 50;
