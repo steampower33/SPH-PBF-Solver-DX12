@@ -63,6 +63,24 @@ struct VSOutput
     float3 PosW : POSITION;
 };
 
+void MakeColour(inout float3 baseColor, in float2 UV)
+{
+    if (UV.x < 0.5)
+    {
+        if (UV.y < 0.5)
+            baseColor = float3(0.5, 0.8, 0.5); // LD - Green
+        else
+            baseColor = float3(1.0, 0.6, 0.6); // LU - Pink
+    }
+    else
+    {
+        if (UV.y < 0.5)
+            baseColor = float3(0.9, 0.8, 0.4); // RD - Yellow
+        else
+            baseColor = float3(0.6, 0.4, 0.8); // RU - Purple
+    }
+}
+
 float4 main(VSOutput input) : SV_TARGET
 {
     float2 scaledUV = input.UV * g_TileCount;
@@ -70,21 +88,8 @@ float4 main(VSOutput input) : SV_TARGET
     float checker = fmod(floor(scaledUV.x) + floor(scaledUV.y), 2.0);
 
     float3 baseColor;
-    if (input.UV.x < 0.5)
-    {
-        if (input.UV.y < 0.5)
-            baseColor = float3(0.5, 0.8, 0.5); // LD - Green
-        else
-            baseColor = float3(1.0, 0.6, 0.6); // LU - Pink
-    }
-    else
-    {
-        if (input.UV.y < 0.5)
-            baseColor = float3(0.9, 0.8, 0.4); // RD - Yellow
-        else
-            baseColor = float3(0.6, 0.4, 0.8); // RU - Purple
-    }
-
+    MakeColour(baseColor, input.UV);
+    
     baseColor = pow(baseColor, 2.2);
     
     float4 shadowPosH = mul(float4(input.PosW, 1.0f), g_ShadowTransform);

@@ -40,8 +40,6 @@ void SphSolver::Run(ID3D12GraphicsCommandList* cmdList)
 		ResetSimulation(cmdList);
 	}
 
-	m_Groups = (m_NumParticles + 255) / 256;
-
 	UpdateInputs();
 
 	ID3D12DescriptorHeap* heaps[] = { m_GlobalHeap.Get() };
@@ -319,6 +317,7 @@ void SphSolver::Initialize(ID3D12Device* device, ID3D12GraphicsCommandList* cmdL
 {
 	m_pDevice = device;
 
+	InitParameters();
 	CreateBuffers(device, cmdList, uploadHeaps);
 	InitBarriers();
 	CreateAllViews(device);
@@ -438,6 +437,13 @@ void SphSolver::InitBarriers()
 	m_AllBarriers[TRANS_UAV_PARTIAL_SUM] = CD3DX12_RESOURCE_BARRIER::Transition(m_PartialSum.Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 }
 
+void SphSolver::InitParameters()
+{
+	m_Groups = (m_NumParticles + 255) / 256;
+
+	m_DiffuseParams.DiffuseDeltaTime = m_FixedDt;
+}
+
 void SphSolver::CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers)
 {
 	m_InitPos.resize(m_NumParticles);
@@ -510,15 +516,15 @@ void SphSolver::ResetParticlePos()
 {
 	m_SimParams.BoxY = { 0.0f, 50.0f };
 
-	float offset = 0.2f;
+	float offset = m_SimParams.CellSize;
 
-	float halfWidthX = 12.0f;
-	float halfWidthZ = 4.0f;
+	float m_HalfWidthX = 10.0f;
+	float m_HalfWidthZ = 4.0f;
 
 	auto CornerDamBreak = [&]()
 		{
-			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
-			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
+			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
+			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
 
 			m_OriginMinX = m_SimParams.BoxX.x;
 
@@ -541,8 +547,8 @@ void SphSolver::ResetParticlePos()
 
 	auto SingleDamBreak = [&]()
 		{
-			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
-			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
+			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
+			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
 
 			float startX = m_SimParams.BoxX.x + offset; // up
 			float startY = m_SimParams.BoxY.x + offset; // up
@@ -563,12 +569,12 @@ void SphSolver::ResetParticlePos()
 
 	auto DoubleDamBreak = [&]()
 		{
-			m_SimParams.BoxX = { -halfWidthX, halfWidthX };
-			m_SimParams.BoxZ = { -halfWidthZ, halfWidthZ };
+			m_SimParams.BoxX = { -m_HalfWidthX, m_HalfWidthX };
+			m_SimParams.BoxZ = { -m_HalfWidthZ, m_HalfWidthZ };
 
 			UINT halfX = m_X;
-			UINT halfY = m_Y;
-			UINT halfZ = m_Z * 0.5f;
+			UINT halfY = m_Y * 0.5f;
+			UINT halfZ = m_Z;
 
 			int idx = 0;
 

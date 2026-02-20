@@ -49,8 +49,8 @@ private:
         SM::Matrix InvView;
         SM::Matrix InvProj;
         
-        float Scale = 0.005f;
-        float BaseAlpha = 0.10f;
+        float Scale = 0.05f;
+        float BaseAlpha = 0.05f;
         SM::Vector2 InvScreenSize;
         
         float Turbidity = 1.0f;

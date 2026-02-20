@@ -150,6 +150,7 @@ void PlanePass::OnGui(RenderContext& ctx)
 {
 	if (ImGui::CollapsingHeader("Plane", ImGuiTreeNodeFlags_DefaultOpen))
 	{
+		//ImGui::Checkbox("Render", &m_bRender);
 		ImGui::DragFloat("Scale", &m_Params.TileScale, 0.1f, 0.0f, 100.0f);
 		ImGui::DragFloat("TileCount", &m_Params.TileCount, 1.0f, 0.0f, 100.0f);
 	}

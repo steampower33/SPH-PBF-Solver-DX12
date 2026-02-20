@@ -25,7 +25,7 @@ public:
 	ID3D12Resource* GetDiffuseParticleBuffer() const { return m_DiffuseParticles.Get(); }
 
 	bool m_bSolveDiffuseParticles = true;
-	float m_FixedDt = 1.0f / 60.0f;
+	float m_FixedDt = 1.0f / 120.0f;
 private:
 	struct SimParams
 	{
@@ -44,11 +44,11 @@ private:
 
 		SM::Vector2 BoxZ;
 		float Epsilon = 600.0f;
-		float K = 0.001f;
+		float K = 0.0001f;
 
 		float N = 4.0f;
 		float DqScale = 0.3f;
-		float VorticityEpsilon = 0.3f;
+		float VorticityEpsilon = 0.4f;
 		float ExternalAccel = 0.0f;
 
 		float JitterFactor = 0.005f;
@@ -63,15 +63,15 @@ private:
 	float m_TotalTime = 0.0f;
 	float m_OriginMinX = 0.0f;
 	float m_WallSpeed = 2.0f;
-	float m_WallAmplitude = 3.0f;
+	float m_WallAmplitude = 4.0f;
 
 	bool m_bSingleDamBreak = false;
 	bool m_bDoubleDamBreak = false;
 	bool m_bCornerDamBreak = true;
 
 	UINT m_Groups = 0;
-	int m_X = 200;
-	int m_Y = 50;
+	int m_X = 50;
+	int m_Y = 100;
 	int m_Z = 50;
 	UINT m_NumParticles = m_X * m_Y * m_Z;
 
@@ -240,8 +240,8 @@ private:
 	// For DiffuseParticles
 	struct DiffuseParams
 	{
-		UINT MaxDiffuseParticles = 64 * 64 * 64;
-		float DiffuseDeltaTime = 1.0f / 60.0f;
+		UINT MaxDiffuseParticles = 100000 * 5;
+		float DiffuseDeltaTime;
 		float TrappedAirMin = 5.0f;
 		float TrappedAirMax = 20.0f;
 
@@ -250,17 +250,17 @@ private:
 		float WaveCrestMax = 0.9f;
 		float K_Wc = 200.0f;
 
-		float EnergyMin = 10.0f;
-		float EnergyMax = 20.0f;
+		float EnergyMin = 15.0f;
+		float EnergyMax = 30.0f;
 		float MaxLifeTime = 2.0f;
 		float CellSizeScale = 1.0f;
 
-		float BubbleScale = 10.0f;
+		float BubbleScale = 1.0f;
 		float BubbleScaleChangeSpeed = 10.0f;
 		int SprayClassifyMaxNeighbours = 2;
 		int BubbleClassifyMinNeighbours = 8;
 
-		float BubbleBuoyancy = 2.0f;
+		float BubbleBuoyancy = 1.5f;
 		float FluidAccelMul = 20.0f;
 		int GeneratePerFrame = 32;
 	} m_DiffuseParams;
@@ -341,6 +341,7 @@ private:
 	void BuildGrid(ID3D12GraphicsCommandList* cmdList);
 
 	void InitBarriers();
+	void InitParameters();
 	void CreateBuffers(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, std::vector<ComPtr<ID3D12Resource>>& tempUploadBuffers);
 	void ResetParticlePos();
 	void CreateAllViews(ID3D12Device* device);

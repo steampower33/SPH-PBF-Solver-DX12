@@ -23,9 +23,12 @@ public:
 
     virtual void OnGui(RenderContext& ctx) = 0;
 
+
 protected:
     UINT m_Width = 0;
     UINT m_Height = 0;
+
+    bool m_bRender = true;
 
     virtual void CreateShaders(RenderContext& ctx) = 0;
     virtual void CreateRootSignatures(RenderContext& ctx) = 0;
