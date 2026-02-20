@@ -13,5 +13,5 @@ struct VSOutput
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    return g_EnvMap.Sample(g_LinearSampler, input.TexCoord);
+    return g_EnvMap.SampleLevel(g_LinearSampler, input.TexCoord, 0);
 }
