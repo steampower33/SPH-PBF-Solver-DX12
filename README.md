@@ -14,7 +14,7 @@ PBF 기반 유체 물리 연산뿐만 아니라 GPU Neighbor Search, Particle So
 
 ## Demo Video
 
-[![PBF Fluid Simulation Demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://www.youtube.com/watch?v=kDXEbfrF-uI)
+[![PBF Fluid Simulation Demo](https://img.youtube.com/vi/kDXEbfrF-uI/maxresdefault.jpg)](https://www.youtube.com/watch?v=kDXEbfrF-uI)
 
 ---
 
