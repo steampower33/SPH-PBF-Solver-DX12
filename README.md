@@ -14,7 +14,19 @@ PBF 기반 유체 물리 연산뿐만 아니라 GPU Neighbor Search, Particle So
 
 ## Demo Video
 
+### PBF / SSFR / Diffuse Particle Demo
+
 [![PBF Fluid Simulation Demo](https://img.youtube.com/vi/kDXEbfrF-uI/maxresdefault.jpg)](https://www.youtube.com/watch?v=kDXEbfrF-uI)
+
+- Fluid Particles: 250,000
+- Max Diffuse Capacity: 500,000
+- Diffuse Particles: 유체 상태에 따라 동적으로 생성
+
+영상에서는 동일한 Fluid Simulation을 기준으로 렌더링 및 시뮬레이션 기능을 단계적으로 활성화합니다.
+
+1. **PBF Fluid Simulation** — 250K Fluid Particle의 기본 Simulation 동작 확인
+2. **SSFR Rendering** — Screen Space Fluid Rendering을 적용하여 Fluid Surface 재구성
+3. **Diffuse Simulation** — Diffuse Particle Simulation을 활성화하여 Spray / Foam / Bubble 효과 추가
 
 ---
 
@@ -304,27 +316,37 @@ float3 dir = rVec / r;
 
 ---
 
-## Performance
+## Performance Demo
 
-### Test Environment
+### 1M Fluid Particle Performance Test
 
-|     |                                        |
-| --- | -------------------------------------- |
-| OS  | Windows 11 64-bit                      |
-| CPU | Intel Core i9-13900HX                  |
-| GPU | NVIDIA GeForce RTX 4060 Laptop GPU 8GB |
+[![PBF 1M Fluid Particle Performance Test](https://img.youtube.com/vi/OuQbcxNxZGo/maxresdefault.jpg)](https://www.youtube.com/watch?v=OuQbcxNxZGo)
 
-### 1M Fluid Particle
+영상에서는 Fluid 100만개 환경에서 PBF Simulation을 실행하며,
+유체 상태에 따라 동적으로 생성되는 Diffuse Particle 및 Rendering Pipeline의 동작을 확인합니다.
 
-Fluid Particle 약 **100만 개** 기준:
+후반부에서는 Diffuse Simulation과 일부 Rendering Pass를 비활성화하여
+1,000,000개의 Fluid Particle에 대한 PBF Simulation 성능을 별도로 확인합니다.
 
-| Pass          |     GPU Time |
-| ------------- | -----------: |
-| PBF Compute   |     ~25.2 ms |
-| SSFR Graphics |      ~3.2 ms |
-| **Total**     | **~28.4 ms** |
+- Fluid Particles: 1,000,000
+- Diffuse Particles: 유체 상태에 따라 동적으로 생성
+- Max Diffuse Capacity: 1,000,000
+- Fixed Simulation Timestep: 1 / 120 s
+- GPU: NVIDIA GeForce RTX 4060 Laptop GPU 8GB
 
-약 33.3ms의 30 FPS Frame Budget 이내에서 Simulation과 Rendering을 처리했습니다.
+### 1M Fluid Baseline
+
+Diffuse Simulation / Rendering을 제외한 Fluid 1M 기준:
+- PBF Compute: ~25.2 ms
+- SSFR Graphics: ~3.2 ms
+- Total: ~28.4 ms
+
+### Diffuse Overhead Test
+
+활성 Diffuse 1.8M 기준:
+- Diffuse Compute: ~9.0 ms
+- Diffuse Render: ~3.2 ms
+- Additional Cost: ~12.2 ms
 
 ### PBF Compute Breakdown
 
