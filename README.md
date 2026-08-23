@@ -156,7 +156,7 @@ Particle을 Grid 기준으로 재배열한 뒤 각 Cell의 범위를 구성하�
 | Naive Bitonic Sort |      1.52 ms |
 | Shared Memory 적용   |      1.01 ms |
 
-약 **33.6%**의 Sorting Time 감소를 확인했습니다.
+약 33.6%의 Sorting Time 감소를 확인했습니다.
 
 ### Counting Sort 기반 구조로 변경
 
