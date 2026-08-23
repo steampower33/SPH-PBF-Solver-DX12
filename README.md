@@ -2,6 +2,8 @@
 
 DirectX 12 Compute Shader를 기반으로 구현한 **GPU Position Based Fluids(PBF) 유체 시뮬레이션 프로젝트**입니다.
 
+📘 [Technical Portfolio / 상세 기술 문서](https://app.notion.com/p/DX12-100-PBF-30dfcfd1c8e080eaaa68c4ff985e817f?source=copy_link)
+
 PBF 기반 유체 물리 연산뿐만 아니라 GPU Neighbor Search, Particle Sorting, Screen Space Fluid Rendering(SSFR), GPU-Driven Diffuse Particle Pipeline까지 하나의 실시간 파이프라인으로 구성했습니다.
 
 * 개발 기간: **2026.02.01 ~ 2026.02.21**
