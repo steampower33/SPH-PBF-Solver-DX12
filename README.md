@@ -401,3 +401,10 @@ Stress Test에서 약 180만 개의 활성 Diffuse Particle이 존재하는 경�
 ## Assets & Credits
 
 - HDRI: [Day Sky HDRI 027 A](https://ambientcg.com/view?id=DaySkyHDRI027A) — ambientCG, CC0
+
+---
+
+## Third-Party Libraries
+
+- [Dear ImGui](https://github.com/ocornut/imgui) — MIT License
+- DirectX Tool Kit for DirectX 12 — MIT License
