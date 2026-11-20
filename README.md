@@ -343,13 +343,6 @@ Diffuse Simulation / Rendering을 제외한 Fluid 1M 기준:
 - SSFR Graphics: ~3.2 ms
 - Total: ~28.4 ms
 
-### Diffuse Overhead Test
-
-활성 Diffuse 1.8M 기준:
-- Diffuse Compute: ~9.0 ms
-- Diffuse Render: ~3.2 ms
-- Additional Cost: ~12.2 ms
-
 ### PBF Compute Breakdown
 
 | Pass                               | GPU Time |
